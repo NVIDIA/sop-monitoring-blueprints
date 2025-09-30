@@ -1,0 +1,187 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+services:
+  startup:
+    image: python:3.13-alpine
+    container_name: sopmon_startup
+    env_file:
+      - .env
+    command: >
+      python3 /app/startup/render_conf.py
+      --output_file /app/config/nginx_rendered.conf
+      --template_file /app/config/nginx_template.conf
+      --output_file /app/config/mongod_rendered.conf
+      --template_file /app/config/mongod_template.conf
+      --log_level DEBUG
+
+    volumes:
+      - ./config:/app/config
+      - ./startup:/app/startup
+    restart: no
+
+  redis:
+    image: redis:8.0.2-alpine
+    container_name: ${REDIS_MSG_BROKER_NAME}
+    env_file:
+      - .env
+    volumes:
+      - sopmon_redis_message_broker_data:/data
+    command: redis-server --port ${REDIS_MSG_BROKER_PORT}
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8.0.11-noble
+    container_name: ${MONGO_NAME}
+    env_file:
+      - .env
+    volumes:
+      - sopmon_mongodb_data:${MONGO_DB_PATH_IN_CONTAINER}
+      - sopmon_mongodb_log_data:${MONGO_DB_LOG_DIR_IN_CONTAINER}
+      - ./config/mongod_rendered.conf:/etc/mongod.conf
+    command: mongod --config /etc/mongod.conf
+    restart: unless-stopped
+    depends_on:
+      startup:
+        condition: service_completed_successfully
+
+  minio:
+    image: ${MINIO_IMG_NAME}
+    container_name: ${MINIO_NAME}
+    env_file:
+      - .env
+    ports:
+      - "${MINIO_CONSOLE_PORT}:${MINIO_CONSOLE_PORT}"
+    volumes:
+      - sopmon_minio_data:/data
+    command: server /data --address ":${MINIO_API_PORT}" --console-address ":${MINIO_CONSOLE_PORT}"
+    restart: unless-stopped
+
+  api_server:
+    image: ${API_SERVER_IMG_NAME}
+    container_name: ${API_SERVER_NAME}
+    env_file:
+      - .env
+    command: >
+      gunicorn sop_monitoring.service.api_server:app
+      --workers=${API_SERVER_WORKERS}
+      --worker-class uvicorn.workers.UvicornWorker
+      --bind=0.0.0.0:${API_SERVER_PORT}
+      --timeout 300
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  action_segment_service:
+    image: ${ACTION_SEGMENT_IMG_NAME}
+    runtime: nvidia
+    shm_size: ${ACTION_SEGMENT_SHM_SIZE}
+    container_name: ${ACTION_SEGMENT_NAME}
+    env_file:
+      - .env
+    volumes:
+      - ${ACTION_SEGMENT_UBOCO_BPE_PATH_ON_HOST}:${ACTION_SEGMENT_UBOCO_BPE_PATH_IN_CONTAINER}
+      - ${ACTION_SEGMENT_UBOCO_SLOWFAST_PATH_ON_HOST}:${ACTION_SEGMENT_UBOCO_SLOWFAST_PATH_IN_CONTAINER}
+      - ${ACTION_SEGMENT_UBOCO_VICLIP_PATH_ON_HOST}:${ACTION_SEGMENT_UBOCO_VICLIP_PATH_IN_CONTAINER}
+      - ${ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_ON_HOST}:${ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_IN_CONTAINER}
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  # FIXME: enable this when we have the model weights.
+  #action_segment_service_cr:
+  #  image: ${ACTION_SEGMENT_CR_IMG_NAME}
+  #  runtime: nvidia
+  #  shm_size: ${ACTION_SEGMENT_SHM_SIZE}
+  #  container_name: ${ACTION_SEGMENT_CR_NAME}
+  #  env_file:
+  #    - .env
+  #  volumes:
+  #    - ${ACTION_SEGMENT_CR_CHECKPOINT_PATH_ON_HOST}:${ACTION_SEGMENT_CR_CHECKPOINT_PATH_IN_CONTAINER}
+  #  restart: unless-stopped
+  #  depends_on:
+  #    redis:
+  #      condition: service_started
+  #    minio:
+  #      condition: service_started
+
+  checker_service:
+    image: ${CHECKER_SERVICE_IMG_NAME}
+    shm_size: ${CHECKER_SERVICE_SHM_SIZE}
+    container_name: ${CHECKER_SERVICE_NAME}
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+
+  vlm_inference_service:
+    image: ${VLM_INFERENCE_IMG_NAME}
+    runtime: nvidia
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    shm_size: ${VLM_INFERENCE_SHM_SIZE}
+    container_name: ${VLM_INFERENCE_NAME}
+    env_file:
+      - .env
+    volumes:
+      - ${VLM_INFERENCE_MODEL_PATH_ON_HOST}:${VLM_INFERENCE_MODEL_PATH_IN_CONTAINER}
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  demo_web_app:
+    image: ${DEMO_WEB_APP_IMG_NAME}
+    container_name: ${DEMO_WEB_APP_NAME}
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  # Nginx ingress for API routing
+  nginx-ingress:
+    image: nginx:1.28.0-alpine
+    container_name: ${NGINX_INGRESS_NAME}
+    env_file:
+      - .env
+    ports:
+      - "${NGINX_INGRESS_PORT}:${NGINX_INGRESS_PORT}"
+    volumes:
+      - ./config/nginx_rendered.conf:/etc/nginx/nginx.conf
+      - sopmon_nginx_ingress_log_data:/var/log/nginx
+    restart: always
+    depends_on:
+      startup:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      api_server:
+        condition: service_started
+      demo_web_app:
+        condition: service_started
+
+volumes:
+  sopmon_redis_message_broker_data:
+  sopmon_nginx_ingress_log_data:
+  sopmon_minio_data:
+  sopmon_mongodb_data:
+  sopmon_mongodb_log_data:

@@ -1,0 +1,1177 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Video Annotation Backend Service",
+    "description": "A microservice for video annotation, processing, and management. Supports video upload, splitting, and clip generation with action-based annotations.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/upload": {
+      "post": {
+        "summary": "Upload Video File",
+        "description": "Upload a video file for annotation. The video will be converted to H264 format for compatibility. Requires actions.json to be uploaded first.",
+        "operationId": "uploadVideo",
+        "tags": ["Video Management"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Video file to upload"
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Video uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Data ID not set or file too small",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error during video processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/actions/upload": {
+      "post": {
+        "summary": "Upload Actions Configuration",
+        "description": "Upload an actions.json file that defines the action types and descriptions for video annotation. This must be done before uploading videos.",
+        "operationId": "uploadActions",
+        "tags": ["Actions Management"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "JSON file containing actions configuration"
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Actions file uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Actions file uploaded successfully with 5 actions"
+                    },
+                    "actions_count": {
+                      "type": "integer",
+                      "example": 5
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["Action 1", "Action 2", "Action 3"]
+                    },
+                    "data_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "f8a7b6c5-1234-5678-90ab-cdef01234567"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid file format or JSON structure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/actions/reset": {
+      "post": {
+        "summary": "Reset Actions Configuration",
+        "description": "Reset the current data_id to start a new dataset annotation session.",
+        "operationId": "resetActions",
+        "tags": ["Actions Management"],
+        "responses": {
+          "200": {
+            "description": "Actions configuration reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Data ID reset successfully. Ready for new dataset annotation."
+                    },
+                    "previous_data_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "f8a7b6c5-1234-5678-90ab-cdef01234567"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/datasets": {
+      "get": {
+        "summary": "Get Datasets Information",
+        "description": "Get metadata, including actions, annotations and chunks, for all datasets. Returns information about videos, their clips, and processing details for each dataset.",
+        "operationId": "getDatasetsInfo",
+        "tags": ["Dataset Management"],
+        "responses": {
+          "200": {
+            "description": "Datasets information retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetsInfoResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos": {
+      "get": {
+        "summary": "List All Videos",
+        "description": "Get a list of all uploaded videos with their metadata.",
+        "operationId": "listVideos",
+        "tags": ["Video Management"],
+        "responses": {
+          "200": {
+            "description": "List of videos retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VideoMetadata"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos/{video_id}": {
+      "get": {
+        "summary": "Get Video Metadata",
+        "description": "Get metadata for a specific video by ID.",
+        "operationId": "getVideo",
+        "tags": ["Video Management"],
+        "parameters": [
+          {
+            "name": "video_id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the video",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Video metadata retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoMetadata"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Video not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chunks/{chunk_id}": {
+      "get": {
+        "summary": "Get Chunk Metadata",
+        "description": "Get metadata for a specific video chunk/clip by ID.",
+        "operationId": "getChunk",
+        "tags": ["Chunk Management"],
+        "parameters": [
+          {
+            "name": "chunk_id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the chunk",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chunk metadata retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkMetadata"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chunk not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chunks/{chunk_id}/download": {
+      "get": {
+        "summary": "Download Chunk File",
+        "description": "Download a specific video chunk/clip file. Returns the chunk file as binary content.",
+        "operationId": "downloadChunk",
+        "tags": ["Chunk Management"],
+        "parameters": [
+          {
+            "name": "chunk_id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the chunk",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chunk file content",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Type": {
+                "description": "MIME type of the chunk file",
+                "schema": {
+                  "type": "string",
+                  "example": "video/mp4"
+                }
+              },
+              "Content-Disposition": {
+                "description": "Suggests filename for download",
+                "schema": {
+                  "type": "string",
+                  "example": "attachment; filename=\"02_test_video_1_1.mp4\""
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chunk not found or chunk file not found on disk",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error during chunk download",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos/{video_id}/download": {
+      "get": {
+        "summary": "Download Video File",
+        "description": "Download a video file with support for range requests for video seeking. Returns the video file as binary content with appropriate headers for video streaming.",
+        "operationId": "downloadVideo",
+        "tags": ["Video Management"],
+        "parameters": [
+          {
+            "name": "video_id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the video",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "description": "Range header for partial content requests (e.g., 'bytes=0-1023')",
+            "schema": {
+              "type": "string",
+              "example": "bytes=0-1023"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full video file content",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Accept-Ranges": {
+                "description": "Indicates support for range requests",
+                "schema": {
+                  "type": "string",
+                  "example": "bytes"
+                }
+              },
+              "Content-Type": {
+                "description": "MIME type of the video file",
+                "schema": {
+                  "type": "string",
+                  "example": "video/mp4"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Partial content response for range requests",
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Range": {
+                "description": "Range of bytes returned in format 'bytes start-end/total'",
+                "schema": {
+                  "type": "string",
+                  "example": "bytes 0-1023/2048"
+                }
+              },
+              "Accept-Ranges": {
+                "description": "Indicates support for range requests",
+                "schema": {
+                  "type": "string",
+                  "example": "bytes"
+                }
+              },
+              "Content-Length": {
+                "description": "Length of the returned content in bytes",
+                "schema": {
+                  "type": "string",
+                  "example": "1024"
+                }
+              },
+              "Content-Type": {
+                "description": "MIME type of the video file",
+                "schema": {
+                  "type": "string",
+                  "example": "video/mp4"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Video not found or video file not found on disk",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error during video download",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos/{video_id}/download-all": {
+      "get": {
+        "summary": "Download All Video Clips",
+        "description": "Download all clips of a specific video as a ZIP file.",
+        "operationId": "downloadAllVideoClips",
+        "tags": ["Video Management"],
+        "parameters": [
+          {
+            "name": "video_id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the original video",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ZIP file containing all video clips",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid video ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Original video not found or no clips available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos/{video_id}/split": {
+      "post": {
+        "summary": "Split Video into Clips",
+        "description": "Split a video into multiple segments based on timestamps and action annotations.",
+        "operationId": "splitVideo",
+        "tags": ["Video Processing"],
+        "parameters": [
+          {
+            "name": "video_id",
+            "in": "path",
+            "required": true,
+            "description": "Unique identifier of the video to split",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitVideoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Video split successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SplitVideoResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid request body or timestamp data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Video not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error during video processing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos/clear-all-datasets": {
+      "delete": {
+        "summary": "Clear All Datasets",
+        "description": "Clear all datasets including videos, metadata and files.",
+        "operationId": "clearAllDatasets",
+        "tags": ["Dataset Management"],
+        "responses": {
+          "200": {
+            "description": "Videos cleared successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Successfully cleared all videos"
+                    },
+                    "data_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "The data_id that was cleared (if specified)"
+                    },
+                    "deleted_count": {
+                      "type": "integer",
+                      "description": "Number of database records deleted"
+                    },
+                    "files_deleted": {
+                      "type": "integer",
+                      "description": "Number of files deleted from disk"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/videos/clear-dataset/{data_id}": {
+      "delete": {
+        "summary": "Clear Dataset",
+        "description": "Clear all videos and files for a specific dataset (data_id).",
+        "operationId": "clearDataset",
+        "tags": ["Video Management"],
+        "parameters": [
+          {
+            "name": "data_id",
+            "in": "path",
+            "required": true,
+            "description": "The data_id of the dataset to clear",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dataset cleared successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Successfully cleared dataset f8a7b6c5-1234-5678-90ab-cdef01234567"
+                    },
+                    "data_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "deleted_count": {
+                      "type": "integer",
+                      "description": "Number of database records deleted"
+                    },
+                    "files_deleted": {
+                      "type": "integer",
+                      "description": "Number of files deleted from disk"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/live": {
+      "get": {
+        "summary": "Liveness Probe",
+        "description": "Health check endpoint for liveness probe.",
+        "operationId": "healthLive",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Service is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "alive"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "summary": "Readiness Probe",
+        "description": "Health check endpoint for readiness probe.",
+        "operationId": "healthReady",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Service is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ready"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoUploadResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Upload response message",
+            "example": "Video file has been successfully uploaded, converted to H264, and saved"
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the saved file",
+            "example": "f8a7b6c5-1234-5678-90ab-cdef01234567"
+          }
+        }
+      },
+      "VideoMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique ID of the video file"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Original file name"
+          },
+          "file_path": {
+            "type": "string",
+            "description": "Path where file is saved on server"
+          },
+          "file_size": {
+            "type": "integer",
+            "description": "File size in bytes"
+          },
+          "upload_time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Upload time"
+          },
+          "mime_type": {
+            "type": "string",
+            "default": "video/mp4",
+            "description": "File MIME type"
+          }
+        },
+        "required": ["id", "filename", "file_path", "file_size", "upload_time"]
+      },
+      "Timestamp": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "number",
+            "format": "float",
+            "description": "Start time in seconds",
+            "minimum": 0
+          },
+          "end": {
+            "type": "number",
+            "format": "float",
+            "description": "End time in seconds",
+            "minimum": 0
+          },
+          "actionIndex": {
+            "type": "integer",
+            "description": "Index of the action (0-based)",
+            "minimum": 0
+          },
+          "actionDescription": {
+            "type": "string",
+            "description": "Description of the action"
+          }
+        },
+        "required": ["start", "end"]
+      },
+      "SplitVideoRequest": {
+        "type": "object",
+        "properties": {
+          "timestamps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Timestamp"
+            },
+            "description": "Array of timestamps defining video segments"
+          }
+        },
+        "required": ["timestamps"]
+      },
+      "VideoClip": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the clip"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Generated filename for the clip"
+          },
+          "start_time": {
+            "type": "number",
+            "format": "float",
+            "description": "Start time of the clip in seconds"
+          },
+          "end_time": {
+            "type": "number",
+            "format": "float",
+            "description": "End time of the clip in seconds"
+          },
+          "duration": {
+            "type": "number",
+            "format": "float",
+            "description": "Duration of the clip in seconds"
+          },
+          "action_index": {
+            "type": "integer",
+            "description": "Action index (0-based)"
+          },
+          "action_number": {
+            "type": "integer",
+            "description": "Action number (1-based)"
+          },
+          "repetition_count": {
+            "type": "integer",
+            "description": "Repetition count for this action"
+          },
+          "timeline_order": {
+            "type": "integer",
+            "description": "Timeline order of the clip"
+          },
+          "action_description": {
+            "type": "string",
+            "description": "Description of the action"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation time of the clip"
+          }
+        }
+      },
+      "SplitVideoResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "clips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoClip"
+            },
+            "description": "Array of generated video clips"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "Error message"
+          }
+        }
+      },
+      "ChunkMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier of the chunk"
+          },
+          "video_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the parent video this chunk belongs to"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Filename of the chunk",
+            "example": "02_test_video_1_1.mp4"
+          },
+          "action": {
+            "type": "string",
+            "description": "Action description for this chunk",
+            "example": "(2) Installs the first fan by connecting the connector"
+          },
+          "file_size": {
+            "type": "integer",
+            "description": "File size in bytes"
+          },
+          "mime_type": {
+            "type": "string",
+            "description": "MIME type of the chunk file",
+            "example": "video/mp4"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp of the chunk"
+          }
+        },
+        "required": ["id", "video_id", "filename", "created_at"]
+      },
+      "VideoClipInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the clip"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Generated filename for the clip"
+          },
+          "start_time": {
+            "type": "number",
+            "format": "float",
+            "description": "Start time of the clip in seconds"
+          },
+          "end_time": {
+            "type": "number",
+            "format": "float",
+            "description": "End time of the clip in seconds"
+          },
+          "duration": {
+            "type": "number",
+            "format": "float",
+            "description": "Duration of the clip in seconds"
+          },
+          "action_description": {
+            "type": "string",
+            "description": "Description of the action for this clip"
+          }
+        },
+        "required": ["id", "filename", "start_time", "end_time", "duration", "action_description"]
+      },
+      "VideoInfo": {
+        "type": "object",
+        "properties": {
+          "original_file_name": {
+            "type": "string",
+            "description": "Original filename of the video"
+          },
+          "total_duration": {
+            "type": "number",
+            "format": "float",
+            "description": "Total duration of all clips in seconds"
+          },
+          "processed_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the video was last processed"
+          },
+          "clips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoClipInfo"
+            },
+            "description": "Array of video clips generated from this video"
+          }
+        },
+        "required": ["original_file_name", "total_duration", "processed_at", "clips"]
+      },
+      "DatasetsInfoResponse": {
+        "type": "object",
+        "description": "Response containing information about all datasets",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/components/schemas/VideoInfo"
+          },
+          "description": "Map of video_id to video information"
+        },
+        "example": {
+          "f8a7b6c5-1234-5678-90ab-cdef01234567": {
+            "video-1-uuid": {
+              "original_file_name": "sample_video.mp4",
+              "total_duration": 120.5,
+              "processed_at": "2024-01-15T10:30:00Z",
+              "clips": [
+                {
+                  "id": "clip-1-uuid",
+                  "filename": "01_sample_video_1_1.mp4",
+                  "start_time": 0.0,
+                  "end_time": 30.0,
+                  "duration": 30.0,
+                  "action_description": "Opening scene"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Video Management",
+      "description": "Operations for managing video files and metadata"
+    },
+    {
+      "name": "Video Processing",
+      "description": "Operations for processing and splitting videos"
+    },
+    {
+      "name": "Chunk Management",
+      "description": "Operations for managing video chunks/clips"
+    },
+    {
+      "name": "Actions Management",
+      "description": "Operations for managing action configurations"
+    },
+    {
+      "name": "Dataset Management",
+      "description": "Operations for managing datasets and their metadata"
+    },
+    {
+      "name": "Health",
+      "description": "Health check endpoints"
+    }
+  ]
+}

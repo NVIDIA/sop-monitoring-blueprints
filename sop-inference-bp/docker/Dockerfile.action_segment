@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:25.08-py3
+ARG FFMPEG_VERSION=6.1.1
+
+#========== Build ffmpeg from source ==========#
+FROM ${BASE_IMAGE} AS builder
+# make this variable available to the build stage
+ARG FFMPEG_VERSION
+
+# 1. dependencies for building ffmpeg
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        yasm \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. download codes
+WORKDIR /tmp
+RUN wget https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 \
+    && tar xjvf ffmpeg-${FFMPEG_VERSION}.tar.bz2
+
+# 3. build ffmpeg
+WORKDIR /tmp/ffmpeg-${FFMPEG_VERSION}
+RUN ./configure \
+      --prefix=/opt/ffmpeg \
+      --disable-gpl \
+      --disable-nonfree \
+      --enable-shared \
+      --disable-doc \
+      --disable-static \
+    && make -j$(nproc) \
+    && make install
+
+#========== target image ==========#
+FROM ${BASE_IMAGE}
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Copy the compiled FFmpeg from the builder stage
+COPY --from=builder /opt/ffmpeg /usr/local
+
+# Configure the dynamic linker to find FFmpeg's shared libraries
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/ffmpeg.conf \
+    && ldconfig
+# Install Python packages.
+COPY docker/requirements.action_segment.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
+
+# Install Detectron2
+RUN python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+
+# Install OpenCV after ffmpeg is setup.
+RUN pip install --no-cache-dir opencv-python-headless==4.10.0.82
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy application code
+COPY sop_monitoring /workspace/sop_monitoring/sop_monitoring
+# Copy uboco code intelligent chunking
+COPY docker/uboco /workspace/uboco
+# Set environment variables for uboco paths
+ENV UBOCO_BASE_PATH=/workspace/uboco
+
+# Install DDM
+COPY docker/patches /workspace/patches
+RUN git clone --depth 1 https://github.com/MCG-NJU/DDM.git ddm \
+    && cd ddm \
+    && git checkout 941e0fb595ab85dc86724a19ed0439ad6bc3632b \
+    && patch -p1 < /workspace/patches/ddm_pytorch2.patch \
+    && rm -rf /workspace/patches
+ENV DDM_BASE_PATH=/workspace/ddm
+
+# Set environment variables for python path
+ENV PYTHONPATH=/workspace/sop_monitoring
+CMD ["python", "-m", \
+     "sop_monitoring.service.action_segment_service", \
+     "--redis-stream", \
+     "producer_api_server_consumer_action_segment_stream"]

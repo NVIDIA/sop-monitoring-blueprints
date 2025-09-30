@@ -1,0 +1,58 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+######################################################################################################
+
+
+version: '3.8'
+
+services:
+  sop-data-gen:
+    image: ${IMAGE_NAME:-sop-data-generation:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${SERVICE_PORT:-5487}:${SERVICE_PORT:-5487}"
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/assets/data"
+      - "${LOG_FILE_ROOT:-logs}:/workspace/assets/logs"
+    environment:
+      - NGC_PERSONAL_KEY=${NGC_API_KEY:-}
+    restart: unless-stopped
+    ipc: host
+
+  metadata_db:
+    image: postgres:17.2
+    shm_size: 256mb # set shared memory limit when using docker compose
+    volumes:
+      - ${POSTGRES_DB_ROOT:-postgres_db}:/var/lib/postgresql/data
+      - ./db-init-scripts/01-init-tables.sql:/docker-entrypoint-initdb.d/01-init-tables.sql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sop_db}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-64MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-4MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+    restart: always
+
+  adminer:
+    image: adminer
+    ports:
+      - 8080:8080
+    restart: always
+
+volumes:
+  config:
+  data:
+  logs:
+  postgres_db:

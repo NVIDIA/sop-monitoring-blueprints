@@ -1,0 +1,398 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "VLM Data Augmentation API",
+    "description": "FastAPI service for VLM data augmentation - processes all four actions automatically. This service performs video data augmentation by processing Binary Choice Questions (BCQ), Multiple Choice Questions (MCQ), Golden GQA to GQA conversion, and GQA to multiple GQAs using LLM.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/augment": {
+      "post": {
+        "summary": "Process VLM data augmentation",
+        "description": "Initiates VLM data augmentation processing for the specified label data ID. This endpoint automatically processes all four augmentation actions: Binary Choice Questions (BCQ), Multiple Choice Questions (MCQ), Golden GQA to GQA conversion, and GQA to multiple GQAs using LLM.",
+        "operationId": "augment",
+        "tags": ["augmentation"],
+        "parameters": [
+          {
+            "name": "label_data_id",
+            "in": "query",
+            "required": true,
+            "description": "The ID of the label data to process for augmentation",
+            "schema": {
+              "type": "string",
+              "example": "label_data_001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Augmentation processing completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AugResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "All actions completed successfully",
+                    "value": {
+                      "dataset_id": "label_data_001_augmented",
+                      "message": "All actions completed successfully"
+                    }
+                  },
+                  "partial_success": {
+                    "summary": "Some actions failed",
+                    "value": {
+                      "dataset_id": "label_data_001_augmented",
+                      "message": "Some actions failed: config_to_bcq, gqa_to_gqas\n Please check the logs for more details"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid input parameters or missing required files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "label_data_not_found": {
+                    "summary": "Label data path not found",
+                    "value": {
+                      "detail": "Label data path not found: /path/to/label_data_001"
+                    }
+                  },
+                  "actions_json_not_found": {
+                    "summary": "actions.json file not found",
+                    "value": {
+                      "detail": "actions.json not found: /path/to/label_data_001/actions.json"
+                    }
+                  },
+                  "no_video_folders": {
+                    "summary": "No video folders found",
+                    "value": {
+                      "detail": "No video folders found in /path/to/label_data_001"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "internal_error": {
+                    "summary": "Internal server error",
+                    "value": {
+                      "detail": "Internal server error: Failed to process augmentation"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/augmented_datasets": {
+      "get": {
+        "summary": "Get metadata for all augmented datasets",
+        "description": "Retrieves metadata for all completed augmented datasets including status, video count, and total clips information.",
+        "operationId": "getAllAugmentedDatasets",
+        "tags": ["augmentation"],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved augmented datasets metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AugmentedDatasetsResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "Multiple augmented datasets",
+                    "value": {
+                      "label_data_001_augmented_0": {
+                        "status": "completed",
+                        "video_count": 10,
+                        "total_clips": 100
+                      },
+                                             "label_data_002_augmented_0": {
+                         "status": "completed",
+                         "video_count": 5,
+                         "total_clips": 50
+                       }
+                     }
+                   }
+                 }
+               }
+             }
+           },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "internal_error": {
+                    "summary": "Internal server error",
+                    "value": {
+                      "detail": "Internal server error: Failed to retrieve augmented datasets"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Check the health status of the VLM Data Augmentation API",
+        "operationId": "health",
+        "tags": ["status"],
+        "responses": {
+          "200": {
+            "description": "API is healthy and running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "message": "VLM Data Augmentation API is running",
+                  "status": "healthy"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/augmentation_status/{dataset_id}": {
+      "get": {
+        "summary": "Get augmentation status",
+        "description": "Get detailed status of augmentation stages for a specific dataset",
+        "operationId": "getAugmentationStatus",
+        "tags": ["augmentation"],
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the augmented dataset",
+            "schema": {
+              "type": "string",
+              "example": "label_data_001_augmented_0"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved augmentation status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AugmentationStatusResponse"
+                },
+                "examples": {
+                  "running": {
+                    "summary": "Augmentation in progress",
+                    "value": {
+                      "dataset_id": "label_data_001_augmented_0",
+                      "status": "running",
+                      "progress": 42.5
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Augmentation not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "Augmentation with ID not found",
+                    "value": {
+                      "detail": "Augmentation with ID label_data_001_augmented_0 not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "internal_error": {
+                    "summary": "Internal server error",
+                    "value": {
+                      "detail": "Internal server error: Failed to retrieve augmentation status"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AugResponse": {
+        "type": "object",
+        "description": "Response model for VLM data augmentation",
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "The generated dataset ID for the augmented data",
+            "example": "label_data_001_augmented"
+          },
+          "message": {
+            "type": "string",
+            "description": "Status message indicating the result of the augmentation process",
+            "default": "All actions completed successfully",
+            "example": "All actions completed successfully"
+          }
+        },
+        "required": ["dataset_id"]
+      },
+      "AugmentedDatasetsResponse": {
+        "type": "object",
+        "description": "Response model for augmented datasets metadata",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/DatasetMetadata"
+        },
+        "example": {
+          "label_data_001_augmented_0": {
+            "status": "completed",
+            "video_count": 10,
+            "total_clips": 100
+          }
+        }
+      },
+      "DatasetMetadata": {
+        "type": "object",
+        "description": "Metadata for a single augmented dataset",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Status of the augmented dataset",
+            "enum": ["completed", "running", "failed"],
+            "example": "completed"
+          },
+          "video_count": {
+            "type": "integer",
+            "description": "Number of videos in the augmented dataset",
+            "minimum": 0,
+            "example": 10
+          },
+          "total_clips": {
+            "type": "integer",
+            "description": "Total number of video clips in the augmented dataset",
+            "minimum": 0,
+            "example": 100
+          }
+        },
+        "required": ["status", "video_count", "total_clips"]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "description": "Health check response",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Health status message",
+            "example": "VLM Data Augmentation API is running"
+          },
+          "status": {
+            "type": "string",
+            "description": "Health status",
+            "enum": ["healthy", "unhealthy"],
+            "example": "healthy"
+          }
+        },
+        "required": ["message", "status"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Error response model",
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "Error message describing what went wrong",
+            "example": "Label data path not found: /path/to/label_data_001"
+          }
+        },
+        "required": ["detail"]
+      },
+      "AugmentationStatusResponse": {
+        "type": "object",
+        "description": "Response model for augmentation status endpoint",
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "The ID of the augmented dataset",
+            "example": "label_data_001_augmented_0"
+          },
+          "status": {
+            "type": "string",
+            "description": "Augmentation status",
+            "enum": ["completed", "running", "failed", "pending"],
+            "example": "running"
+          },
+          "progress": {
+            "type": "number",
+            "format": "float",
+            "description": "Progress percentage of completed stages",
+            "minimum": 0,
+            "maximum": 100,
+            "example": 75.0
+          }
+        },
+        "required": ["dataset_id", "status", "progress"]
+      }
+    },
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key for authentication"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "augmentation",
+      "description": "VLM data augmentation operations"
+    },
+    {
+      "name": "status",
+      "description": "API status and health check operations"
+    }
+  ]
+} 

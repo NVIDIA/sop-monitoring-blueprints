@@ -1,0 +1,13 @@
+<video>\nThere are 11 possible actions for server assembly.
+(1) Check the server is correctly positioned on the assembly table in front of the worker
+(2) Install the first fan by connecting the connector and then pressing the fan in place
+(3) Install the second fan by connecting the connector and then pressing the fan in place
+(4) Install the third fan by connecting the connector and then pressing the fan in place
+(5) Install the forth fan by connecting the connector and then pressing the fan in place
+(6) Install the fifth fan by connecting the connector and then pressing the fan in place
+(7) Install the sixth fan by connecting the connector and then pressing the fan in place
+(8) Install the first power supply by placing the power supply in its compartment and then firmly pressing it in its place until the latch clicks
+(9) Install the second power supply by placing the power supply in its compartment and then firmly pressing it in its place until the latch clicks
+(10) Install the server cover by placing it in its shown location on top of the server and then presses the black latch to lock the cover in place
+(11) Verify the server is well assembled and ready to be moved to next step
+What actions does the worker take?

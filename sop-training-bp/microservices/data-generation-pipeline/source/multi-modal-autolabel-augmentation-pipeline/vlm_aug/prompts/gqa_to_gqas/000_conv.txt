@@ -1,0 +1,29 @@
+Question:
+Where is the laptop located in the video?
+===
+Answer:
+The laptop is on an assembly line.
+===
+Question:
+What component is positioned on the motherboard in the video?
+===
+Answer:
+A CPU is positioned on the laptop's motherboard.
+===
+Question:
+What stage of the laptop manufacturing process does the video represent?
+===
+Answer:
+The video represents a mid-assembly stage, where key components like the CPU are being prepared for integration.
+===
+Question:
+What does the video suggest about the stage of the assembly process?
+===
+Answer:
+The video shows a stage where the CPU is positioned and ready for assembly, indicating a mid-point in the laptop's assembly process.
+===
+Question:
+Is the video showing DRAM being assembled?
+===
+Answer:
+No, the video shows laptop is on the assbembly line and a CPU is getting ready to be assembled.

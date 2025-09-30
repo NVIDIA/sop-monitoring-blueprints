@@ -1,0 +1,8 @@
+*data*
+*weights*
+.git
+.gitignore
+*venv*
+*config*
+*.ipynb
+__pycache__

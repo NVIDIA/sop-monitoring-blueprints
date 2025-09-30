@@ -1,0 +1,8 @@
+# Node.js dependencies
+node_modules/
+
+# Video files
+*.mp4
+
+# any __pycache__
+__pycache__/

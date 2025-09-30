@@ -1,0 +1,11 @@
+check the server is correctly positioned on the assembly table in front of the worker
+install the first fan by connecting the connector and then pressing the fan in place
+install the second fan by connecting the connector and then pressing the fan in place
+install the third fan by connecting the connector and then pressing the fan in place
+install the forth fan by connecting the connector and then pressing the fan in place
+install the fifth fan by connecting the connector and then pressing the fan in place
+install the sixth fan by connecting the connector and then pressing the fan in place
+install the first power supply by placing the power supply in its compartment and then firmly pressing it in its place until the latch clicks
+install the second power supply by placing the power supply in its compartment and then firmly pressing it in its place until the latch clicks
+install the server cover by placing it in its shown location on top of the server and then presses the black latch to lock the cover in place
+verify the server is well assembled and ready to be moved to next step

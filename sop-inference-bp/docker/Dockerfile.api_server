@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+FROM python:3.13-alpine
+
+# Set working directory
+WORKDIR /workspace
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.116.1 \
+    pydantic==2.11.7 \
+    redis==6.2.0 \
+    uvicorn==0.35.0 \
+    minio==7.2.15 \
+    python-multipart==0.0.20 \
+    pymongo==4.13.2 \
+    gunicorn==23.0.0 \
+    uvicorn-worker==0.3.0
+
+# Copy application code
+COPY sop_monitoring /workspace/sop_monitoring/sop_monitoring
+ENV PYTHONPATH=/workspace/sop_monitoring
+# NOTE: This is for development only. For production, use gunicorn, which is called in compose.yml file.
+CMD ["python", "-m", "sop_monitoring.service.api_server"]

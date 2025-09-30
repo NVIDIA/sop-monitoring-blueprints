@@ -1,0 +1,56 @@
+# Git directories
+**/.git
+**/.gitignore
+
+# Python cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/pip-log.txt
+**/pip-delete-this-directory.txt
+**/.pytest_cache
+
+# Virtual environments
+**/venv
+**/ENV
+**/env
+
+# IDE files
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Documentation (exclude README.md from root but allow in source directory)
+README.md
+**/docs
+
+# Test files
+**/tests
+**/*_test.py
+**/*test.py
+
+# Build artifacts (except when needed)
+**/build
+**/dist
+
+# Logs
+**/*.log
+**/logs
+
+# Local environment files
+**/.env
+**/.env.local
+
+# Assets folder (will be mounted as volume)
+assets/
+
+# Database files
+**/*.db
+**/*.sqlite
