@@ -96,7 +96,7 @@ WORKDIR /workspace/sop-cr1-ftms
 RUN cd /workspace && \
     git clone https://github.com/nvidia-cosmos/cosmos-rl.git && \
     cd cosmos-rl && \
-    git checkout c3420121961a45a138ae9fd6c54d6d5ab019f4ed && \
+    git checkout b81170352d7425cdf026bac63307e78d65ae5339 && \
     pip install . && \
     cd .. && \
     rm -rf cosmos-rl

@@ -34,19 +34,11 @@ class CustomConfig(pydantic.BaseModel):
 
 
 class CosmosSFTDataset(Dataset):
-    def __init__(self, dataset: Dataset, custom_config: CustomConfig):
+    def __init__(self, dataset: Dataset, config: Config, custom_config: CustomConfig):
+        self.config = config
         self.dataset = dataset
         self.custom_config = custom_config
         self.vision_kwargs = custom_config.vision.model_dump(exclude_none=True)
-
-    def setup(self, config: Config, tokenizer: AutoTokenizer, *args, **kwargs):
-        """
-        Called by launcher after being mounted
-        """
-        config.train.train_policy.dataset.name = ast.literal_eval(config.train.train_policy.dataset.name)
-
-        self.config = config
-        self.tokenizer = tokenizer
 
         if config.train.train_policy.dataset.split:
             if isinstance(config.train.train_policy.dataset.split, list):
@@ -142,5 +134,5 @@ if __name__ == "__main__":
         dataset = load_dataset(config.train.train_policy.dataset.name, config.train.train_policy.dataset.subset)
 
     launch_worker(
-        dataset=CosmosSFTDataset(dataset=dataset, custom_config=custom_config),
+        dataset=CosmosSFTDataset(dataset=dataset, config=config, custom_config=custom_config),
     )
