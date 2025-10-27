@@ -71,7 +71,7 @@ save_mode = "async"
 n_init_replicas = 1
 tp_size = 1
 cp_size = 1
-dp_shard_size = 1
+dp_shard_size = 8
 pp_size = 1
 dp_replicate_size = 1
 cp_rotate_method = "allgather"
@@ -79,4 +79,5 @@ cp_rotate_method = "allgather"
 [custom.vision]
 fps=8
 max_pixels=81920
+min_pixels=81920
 max_frames=8

@@ -26,8 +26,9 @@ Please refer to training BP deployment for running the whole service.
 ## Usage Workflow
 
 ### 1. Action Configuration
-- Upload a JSON file containing action definitions
+- Upload `actions.json` file containing action definitions
 - Format: `{"actions": ["(1) Pick up ...", "(2) Put down ..."]}`
+    * Each action should look like "(N) ...."
 - Actions serve as instructions & choices for video annotation
 
 ### 2. Video Upload
