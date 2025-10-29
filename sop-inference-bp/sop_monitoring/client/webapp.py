@@ -142,7 +142,7 @@ def generate_sop_prompt(action_config: dict) -> str:
         return "Please upload an action JSON file first."
 
     actions = action_config["actions"]
-    prefix = f"There are {len(actions)-1} possible actions for laptop FFC assembly. The {len(actions)}th option means the operator is not taking any of the FFC assembly actions.\nWhat actions does the operator take?"
+    prefix = f"There are {len(actions)-1} possible actions.\nWhat actions does the operator take?"
 
     prompt_lines = [prefix] + actions
     return "\n".join(prompt_lines)
@@ -439,7 +439,7 @@ with gr.Blocks(
                 label="Generated SOP Prompt",
                 placeholder="Upload an action JSON file to see the generated prompt...",
                 lines=8,
-                interactive=False,
+                interactive=True,
                 max_lines=15
             )
 

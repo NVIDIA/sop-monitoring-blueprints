@@ -175,15 +175,17 @@ async def _ensure_minio_bucket_exists():
     """
     def _inner():
         try:
-            bucket_exists = minio_client.bucket_exists(MINIO_BUCKET)
-            if not bucket_exists:
-                _LOGGER.info("Creating MinIO bucket: %s", MINIO_BUCKET)
-                minio_client.make_bucket(MINIO_BUCKET)
-                _LOGGER.info("MinIO bucket '%s' created successfully", MINIO_BUCKET)
+            _LOGGER.info("Creating MinIO bucket: %s", MINIO_BUCKET)
+            minio_client.make_bucket(MINIO_BUCKET)
+            _LOGGER.info("MinIO bucket '%s' created successfully", MINIO_BUCKET)
+        except minio.error.S3Error as err:
+            if err.code in ["BucketAlreadyOwnedByYou", "BucketAlreadyExists"]:
+                _LOGGER.info("MinIO bucket '%s' already exists. Code: %s", MINIO_BUCKET, err.code)
             else:
-                _LOGGER.info("MinIO bucket '%s' already exists", MINIO_BUCKET)
-        except Exception as e:
-            _LOGGER.error("Failed to create MinIO bucket '%s': %s", MINIO_BUCKET, e)
+                _LOGGER.error("An unexpected S3 error occurred: %s", err)
+                raise
+        except Exception as exc:
+            _LOGGER.error("A non-S3 error occurred: %s", exc)
             raise
     await asyncio.to_thread(_inner)
 

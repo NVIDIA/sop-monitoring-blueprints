@@ -10,6 +10,7 @@
 import itertools
 import time
 import logging
+import os
 import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor, Future
@@ -17,6 +18,8 @@ from dataclasses import dataclass
 
 import torch
 import torch.multiprocessing as mp
+
+from .utils import setup_logging
 
 from ..multi_gpu_utils import init_mp_spawn
 from ..vlm import CosmosReason1 as VlmModel
@@ -64,6 +67,10 @@ def gpu_worker_process(gpu_id: int, model_dir: str, request_queue: mp.Queue, res
     """
     # Set up logging for this process
     logger = logging.getLogger(f"GPU-{gpu_id}")
+
+    log_level_name = os.environ.get("VLM_INFERENCE_LOG_LEVEL", "INFO")
+    setup_logging(log_level_name)
+
     logger.info("Starting GPU worker process for GPU %s", gpu_id)
 
     # Handle shutdown gracefully
@@ -302,7 +309,19 @@ class MultiGPUVLMManager:
     def _get_next_worker_round_robin(self) -> GPUWorker | None:
         """Get the next GPU worker using round-robin selection"""
         with self.round_robin_lock:
-            return next(self.gpu_workers_iterator_cycle)
+            ret = next(self.gpu_workers_iterator_cycle)
+
+            dead_gpus = set()
+            while not ret.process.is_alive():
+                dead_gpus.add(ret.gpu_id)
+                _LOGGER.warning("GPU worker %s is not alive. Selecting next worker.", ret.gpu_id)
+                ret = next(self.gpu_workers_iterator_cycle)
+                if ret.gpu_id in dead_gpus:
+                    _LOGGER.error("Running out of GPU workers. All GPU workers are dead. "
+                                  "You might want to check service logs to see what went wrong.")
+                    return None
+
+            return ret
 
     def submit_chunk_and_infer(self,
                                request_id: str,
@@ -319,7 +338,9 @@ class MultiGPUVLMManager:
 
         worker = self._get_next_worker_round_robin()
         if worker is None:
-            raise RuntimeError("No GPU workers available")
+            raise RuntimeError("No GPU workers available. "
+                               "This might be caused by failures to initialize GPU works. "
+                               "You might want to check logs of the service.")
 
         future = Future()
 

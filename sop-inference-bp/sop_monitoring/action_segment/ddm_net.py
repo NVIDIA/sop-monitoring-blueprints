@@ -511,13 +511,26 @@ class MultiGpuDdmNet:
     def _get_next_worker_round_robin(self) -> DdmNetGpuWorker:
         """Get the next GPU worker in round-robin order"""
         with self.gpu_workers_lock:
-            return next(self.gpu_workers_iterator_cycle)
+            ret = next(self.gpu_workers_iterator_cycle)
+            dead_gpus = set()
+            while not ret.process.is_alive():
+                dead_gpus.add(ret.gpu_id)
+                _LOGGER.warning("GPU worker %s is not alive. Selecting next worker.", ret.gpu_id)
+                ret = next(self.gpu_workers_iterator_cycle)
+                if ret.gpu_id in dead_gpus:
+                    _LOGGER.error("Running out of GPU workers. All GPU workers are dead."
+                                  "You might want to check service logs to see what went wrong.")
+                    return None
+
+            return ret
 
     def _submit_inference(self, request_id: str, input_video_path: str, start_sec: float, end_sec: float, batch_size: int) -> Future:
         """Submit an inference request to the DDM-Net model"""
 
         if not self.is_running:
-            raise RuntimeError("DDM-Net is not running")
+            raise RuntimeError("No GPU workers available. "
+                               "This might be caused by failures to initialize GPU works. "
+                               "You might want to check logs of the service.")
 
         worker = self._get_next_worker_round_robin()
         if worker is None:

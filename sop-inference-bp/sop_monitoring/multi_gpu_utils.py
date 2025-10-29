@@ -130,7 +130,9 @@ class MultiWorkerManager:
         """Submit a request to the worker manager"""
         worker_process = self._get_next_worker_process()
         if worker_process is None:
-            raise RuntimeError("No worker processes available")
+            raise RuntimeError("No GPU workers available. "
+                               "This might be caused by failures to initialize GPU works. "
+                               "You might want to check logs of the service.")
 
         future = Future()
         request_id = uuid.uuid4().hex
@@ -195,7 +197,18 @@ class MultiWorkerManager:
 
     def _get_next_worker_process(self) -> _WorkerProcess:
         with self._worker_processes_lock:
-            return next(self._worker_processes_iterator_cycle)
+            ret = next(self._worker_processes_iterator_cycle)
+            dead_gpus = set()
+            while not ret.process.is_alive():
+                dead_gpus.add(ret.gpu_id)
+                _LOGGER.warning("GPU worker %s is not alive. Selecting next worker.", ret.gpu_id)
+                ret = next(self._worker_processes_iterator_cycle)
+                if ret.gpu_id in dead_gpus:
+                    _LOGGER.error("Running out of GPU workers. All GPU workers are dead."
+                                  "You might want to check service logs to see what went wrong.")
+                    return None
+
+            return ret
 
     def _start_response_handler(self) -> None:
         """Start the response handler thread"""

@@ -285,15 +285,15 @@ def main(args: argparse.Namespace):
 
                         # Cast to UboCoChunkingOptions to access uboco-specific parameters
                         uboco_options = action_segment_options
-                        
+
                         # Uboco paths - these should be configurable via environment variables
                         UBOCO_BASE_PATH = os.environ["UBOCO_BASE_PATH"]
                         ACTION_SEGMENT_UBOCO_SLOWFAST_PATH_IN_CONTAINER = os.environ["ACTION_SEGMENT_UBOCO_SLOWFAST_PATH_IN_CONTAINER"]
                         ACTION_SEGMENT_UBOCO_VICLIP_PATH_IN_CONTAINER = os.environ["ACTION_SEGMENT_UBOCO_VICLIP_PATH_IN_CONTAINER"]
-                        
+
                         # Use parameters directly from chunking options (no fallbacks)
-                        _LOGGER.info("UboCo parameters: extracted_fps=%.1f (clip_len=%.3fs), is_deterministic=%s, min_segment_seconds=%.1fs, threshold=%.2f", 
-                                     uboco_options.extracted_fps, 1/uboco_options.extracted_fps, uboco_options.is_deterministic, 
+                        _LOGGER.info("UboCo parameters: extracted_fps=%.1f (clip_len=%.3fs), is_deterministic=%s, min_segment_seconds=%.1fs, threshold=%.2f",
+                                     uboco_options.extracted_fps, 1/uboco_options.extracted_fps, uboco_options.is_deterministic,
                                      uboco_options.min_segment_seconds, uboco_options.threshold)
 
                         # Get cached models
@@ -312,7 +312,7 @@ def main(args: argparse.Namespace):
                                                          extracted_fps=uboco_options.extracted_fps,
                                                          min_segment_seconds=uboco_options.min_segment_seconds,
                                                          threshold=uboco_options.threshold)
-                        
+
                         # Handle returned models for caching
                         if len(result) == 4:
                             # Return format: (chunk_start_seconds, chunk_end_seconds, returned_viclip_model, returned_slowfast_model)
@@ -331,7 +331,7 @@ def main(args: argparse.Namespace):
                         else:
                             # Return format: (chunk_start_seconds, chunk_end_seconds)
                             chunk_start_seconds, chunk_end_seconds = result
-    
+
                     elif action_segment_algo == CHUNK_ALGO_DDM_NET_NAME:
                         _LOGGER.info("Using ddm-net action segmentation")
 
@@ -398,14 +398,14 @@ def main(args: argparse.Namespace):
                     error_message="",
                 )
             except Exception as e:
-                _LOGGER.error("request_id: %s, Error in action segment service: %s", message_id, e)
-                _LOGGER.error("Full traceback: %s", traceback.format_exc())
+                error_msg = f"Error processing temporal segmentation request {message_id}, exception: {e}, {traceback.format_exc()}"
+                _LOGGER.error(error_msg)
                 action_segment_response = ActionSegmentResponse(
                     request_id=message_id,
                     chunk_start_seconds=[],
                     chunk_end_seconds=[],
                     chunk_keys=[],
-                    error_message=str(e),
+                    error_message=error_msg,
                 )
             finally:
                 _LOGGER.debug("Acknowledged message %s", message_id)

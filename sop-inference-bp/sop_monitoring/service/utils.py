@@ -58,3 +58,15 @@ def get_hostname() -> str:
         _LOGGER.warning("Error getting hostname. Using UUID: %s instead.", hostname)
         _LOGGER.warning("Error: %s", e)
     return hostname
+
+def setup_logging(log_level_name: str) -> None:
+    try:
+        log_level = getattr(logging, log_level_name.upper())
+    except AttributeError:
+        _LOGGER.error("Invalid log level: %s. Using INFO instead.", log_level_name)
+        log_level = logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format="[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s] %(message)s"
+    )

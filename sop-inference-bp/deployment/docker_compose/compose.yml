@@ -7,10 +7,13 @@
 # disclosure or distribution of this material and related documentation
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
+
+name: ${BP_NAME}
+
 services:
   startup:
     image: python:3.13-alpine
-    container_name: sopmon_startup
+    container_name: ${BP_NAME}-startup
     env_file:
       - .env
     command: >

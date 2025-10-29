@@ -197,8 +197,7 @@ The system exposes a full OpenAPI-compliant RESTful API. Once the service is run
 
 ### Core Endpoints
 
-<details>
-<summary><strong>POST /v1/chat/completions</strong></summary>
+#### POST /v1/chat/completions
 
 This is an OpenAI-compatible endpoint for VLM inference. It includes an optional
 custom `chunking_options` field to select the video chunking algorithm.
@@ -224,10 +223,7 @@ chat_response = client.chat.completions.create(
 )
 ```
 
-</details>
-
-<details>
-<summary><strong>File Management Endpoints (/v1/files)</strong></summary>
+#### File Management Endpoints (/v1/files)
 
 These endpoints are also OpenAI-compatible and can be called using the `openai` Python package for uploading, listing, downloading, and deleting files.
 
@@ -247,10 +243,7 @@ with open("/path/to/video.mp4", "rb") as f:
     uploaded_file = client.files.create(file=f, purpose="vision")
 ```
 
-</details>
-
-<details>
-<summary><strong>POST /v1/sop/detection</strong></summary>
+#### POST /v1/sop/detection
 
 This is the primary endpoint for analyzing SOP compliance by sending VLM output to it.
 
@@ -258,18 +251,16 @@ This is the primary endpoint for analyzing SOP compliance by sending VLM output 
 
 ```json
 {
-    "action_json": {
-        "actions": [
-            "(1) IDLE",
-            "(2) Action A",
-            "(3) Action B",
-            "(4) Some padding actions that are not a part of the SOP"
-        ],
-        "actions_can_be_skipped": [
-            "(1) IDLE",
-            "(4) Some padding actions that are not a part of the SOP"
-        ]
-    }
+  "actions": [
+      "(1) IDLE",
+      "(2) Action A",
+      "(3) Action B",
+      "(4) Some padding actions that are not a part of the SOP"
+  ],
+  "actions_can_be_skipped": [
+      "(1) IDLE",
+      "(4) Some padding actions that are not a part of the SOP"
+  ]
 }
 ```
 
@@ -302,8 +293,6 @@ This is the primary endpoint for analyzing SOP compliance by sending VLM output 
         * `cycle_boundary_threshold_high` = `0.8` (anything above step `6 * 0.8 = 4.8` is "high").
         * The observed sequence is `[1, 3, 4, 5, ...]`. The highest step seen is `5`, which is above the "high" threshold of 4.8.
         * If the next step observed is `2` (which is below the "low" threshold of 2.4), the system declares a new SOP cycle.
-
-</details>
 
 ## Examples & Demo UI 🖥️
 

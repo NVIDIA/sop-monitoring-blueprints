@@ -164,7 +164,7 @@ class VLMInferencePool:
                 _LOGGER.info("VLM chunk and infer get result took %s seconds", after_get_result - after_submit_request)
 
         except Exception as e:
-            error_msg = f"Error processing VLM chunk and infer request {message_id}, error: {traceback.format_exc()}"
+            error_msg = f"Error processing VLM chunk and infer request {message_id}, exception: {e}, {traceback.format_exc()}"
             _LOGGER.error(error_msg)
             vlm_response = VlmInferenceResponse(
                 request_id=message_id,

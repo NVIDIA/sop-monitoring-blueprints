@@ -29,7 +29,8 @@ from .redis_stream import (
 from .redis_database import RadisDatabase
 from .utils import (
     create_redis_client,
-    get_hostname
+    get_hostname,
+    setup_logging
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -55,16 +56,7 @@ def get_video_filenames(redis_database: RadisDatabase, chunk_keys: list[str], ch
 
 def main():
     log_level_name = os.environ.get("VLM_INFERENCE_LOG_LEVEL", "INFO")
-    try:
-        log_level = getattr(logging, log_level_name.upper())
-    except AttributeError:
-        _LOGGER.error("Invalid log level: %s. Using INFO instead.", log_level_name)
-        log_level = logging.INFO
-
-    logging.basicConfig(
-        level=log_level,
-        format="[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s] %(message)s"
-    )
+    setup_logging(log_level_name)
 
     redis_client_for_stream = create_redis_client(REDIS_STREAM_DB_INDEX)
     redis_client_for_database = create_redis_client(REDIS_CHUNK_VIDEO_DB_INDEX)
