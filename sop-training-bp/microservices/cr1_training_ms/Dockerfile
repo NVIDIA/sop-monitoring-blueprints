@@ -74,7 +74,7 @@ RUN apt-get update -qq && \
 RUN python${PYTHON_VERSION} -m venv /opt/venv/cosmos_rl
 ENV PATH="/opt/venv/cosmos_rl/bin:$PATH"
 
-RUN pip install -U pip setuptools==79.0.1 wheel==0.45.1
+RUN pip install -U pip setuptools==79.0.1 wheel==0.45.1 psutil==7.1.2
 # even though we don't depend on torchaudio, vllm does. in order to
 # make sure the cuda version matches, we install it here.
 RUN pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
@@ -82,7 +82,7 @@ RUN pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url h
 RUN pip install \
     torchao==0.12.0 \
     vllm==0.10.0 \
-    flash-attn==2.8.2 \
+    flash-attn==2.8.2 --no-build-isolation\
     https://download.pytorch.org/whl/cu128/flashinfer/flashinfer_python-0.2.6.post1%2Bcu128torch2.7-cp39-abi3-linux_x86_64.whl
 
 
