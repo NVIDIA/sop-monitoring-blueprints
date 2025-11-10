@@ -15,6 +15,7 @@ This repository contains the SOP (Standard Operating Procedure) Monitoring syste
 - [Examples & Demo UI 🖥️](#examples--demo-ui-️)
   - [Running Examples](#running-examples)
   - [Reference Web Application](#reference-web-application)
+- [Helper Scripts 🛠️](#helper-scripts-️)
 - [Acknowledgments 🙏](#acknowledgments-)
 
 ## Key Features ✨
@@ -136,6 +137,8 @@ This section will guide you through setting up and running the SOP Monitoring sy
 
 The system is configured through environment variables in the [deployment/docker_compose/.env](./deployment/docker_compose/.env) file.
 
+You can roughly validate your `.env` file configuration using the helper script [`env_check.py`](./scripts/env_check.py) located in the `scripts/` directory. Run this script to check for missing or misconfigured environment variables before launching the services. This can help catch common issues early in your setup process.
+
 <details>
 <summary><strong>Click to see Key Environment Variables</strong></summary>
 
@@ -162,6 +165,8 @@ The system is configured through environment variables in the [deployment/docker
 * `ACTION_SEGMENT_UBOCO_*_ON_HOST`: Host paths to UBOCO model files. Assign an arbitrary path if not used.
 
 * `ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_ON_HOST`: Host path to the DDM-Net model. Assign an arbitrary path if not used.
+
+* `ACTION_SEGMENT_DDM_NET_RESOLUTION`: The resolution used to train the above DDM checkpoint. The value must be set to an integer and match with the one when finetuning DDM.
 
 * `ACTION_SEGMENT_CR_*`: Cosmos-Reason-1 as action segmentation algorithm requires different environment, so it has a suffix `_CR` to indicate the corresponding image name and path.
 
@@ -325,6 +330,10 @@ ffmpeg -i input_video.mp4 -c:v h24 output_video_h264.mp4
 ```
 
 ![Web Showing a summary](./docs/assets/web_showing_summary.jpg)
+
+## Helper Scripts 🛠️
+
+The `scripts/` directory contains helpful utilities for working with the SOP Monitoring system. For detailed information about available scripts and their usage, please refer to the [scripts/README.md](./scripts/README.md).
 
 ## Acknowledgments 🙏
 

@@ -54,7 +54,7 @@ COPY docker/requirements.action_segment.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm -f /tmp/requirements.txt
 
 # Install Detectron2
-RUN python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+RUN python -m pip install --no-cache-dir 'git+https://github.com/facebookresearch/detectron2.git'
 
 # Install OpenCV after ffmpeg is setup.
 RUN pip install --no-cache-dir opencv-python-headless==4.10.0.82
@@ -63,7 +63,7 @@ RUN pip install --no-cache-dir opencv-python-headless==4.10.0.82
 WORKDIR /workspace
 
 # Copy application code
-COPY sop_monitoring /workspace/sop_monitoring/sop_monitoring
+COPY sop_monitoring /workspace/sop-inference-bp/sop_monitoring
 # Copy uboco code intelligent chunking
 COPY docker/uboco /workspace/uboco
 # Set environment variables for uboco paths
@@ -79,7 +79,7 @@ RUN git clone --depth 1 https://github.com/MCG-NJU/DDM.git ddm \
 ENV DDM_BASE_PATH=/workspace/ddm
 
 # Set environment variables for python path
-ENV PYTHONPATH=/workspace/sop_monitoring
+ENV PYTHONPATH=/workspace/sop-inference-bp
 CMD ["python", "-m", \
      "sop_monitoring.service.action_segment_service", \
      "--redis-stream", \

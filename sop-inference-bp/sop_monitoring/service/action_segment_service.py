@@ -57,6 +57,8 @@ from .utils import (
     get_hostname,
 )
 
+from ..utils import setup_logging
+
 _LOGGER = logging.getLogger(__name__)
 
 _TMP_DIR = "/dev/shm"
@@ -129,6 +131,15 @@ def _lazy_import_ddm_net(ddm_frames_per_side):
 
     ddm_multi_gpu_manager = None
 
+    ddm_resolution = os.getenv("ACTION_SEGMENT_DDM_NET_RESOLUTION", "must-be-set")
+    try:
+        ddm_resolution = int(ddm_resolution)
+        _LOGGER.info("DDM-Net resolution set to %d", ddm_resolution)
+    except ValueError as exc:
+        _LOGGER.error("Error parsing ACTION_SEGMENT_DDM_NET_RESOLUTION: %s. This value must be set and an integer.", exc)
+        _LOGGER.error("DDM-Net will not be available for action segmentation.")
+        return ddm_multi_gpu_manager
+
     try:
         ddm_frames_per_segment_hint = int(os.getenv("ACTION_SEGMENT_DDM_NET_FRAMES_PER_SEGMENT_HINT", "256"))
     except Exception as e:
@@ -142,6 +153,7 @@ def _lazy_import_ddm_net(ddm_frames_per_side):
         if os.path.exists(ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_IN_CONTAINER) and os.path.isfile(ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_IN_CONTAINER):
             ddm_multi_gpu_manager = MultiGpuDdmNet(
                 checkpoint_path=ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_IN_CONTAINER,
+                resolution=ddm_resolution,
                 frames_per_side=ddm_frames_per_side,
                 frames_per_segment_hint=ddm_frames_per_segment_hint
             )
@@ -193,16 +205,7 @@ def main(args: argparse.Namespace):
     _LOGGER.debug("Initializing worker %s", worker_name)
 
     log_level_name = os.environ.get("ACTION_SEGMENT_SERVICE_LOG_LEVEL", "INFO")
-    try:
-        log_level = getattr(logging, log_level_name.upper())
-    except AttributeError:
-        _LOGGER.error("Invalid log level: %s. Using INFO instead.", log_level_name)
-        log_level = logging.INFO
-
-    logging.basicConfig(
-        level=log_level,
-        format="[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s] %(message)s"
-    )
+    setup_logging(log_level_name)
 
     redis_client_for_stream = create_redis_client(REDIS_STREAM_DB_INDEX)
     _LOGGER.info("Testing Redis client at %s:%s",
@@ -337,22 +340,18 @@ def main(args: argparse.Namespace):
 
                         if ddm_multi_gpu_manager is None:
                             raise RuntimeError("DDM-Net is not available for action segmentation. "
-                                               "Please check errors in the log when the service started.")
+                                               "Please check errors in the log when the service was initialized.")
 
                         _LOGGER.debug("Using ddm-net action segmentation with options: "
-                                      "threshold: %s, min_length_sec: %s, max_length_sec: %s, "
-                                      "frames_per_side: %s, batch_size: %s",
+                                      "threshold: %s, nms_sec: %s, batch_size: %s",
                                       action_segment_options.threshold,
-                                      action_segment_options.min_length_sec,
-                                      action_segment_options.max_length_sec,
-                                      ddm_frames_per_side,
+                                      action_segment_options.nms_sec,
                                       action_segment_options.batch_size)
 
                         chunk_start_seconds, chunk_end_seconds = ddm_multi_gpu_manager.process_video(
                             input_video_path=video_path,
                             threshold=action_segment_options.threshold,
-                            min_length_sec=action_segment_options.min_length_sec,
-                            max_length_sec=action_segment_options.max_length_sec,
+                            nms_sec=action_segment_options.nms_sec,
                             batch_size=action_segment_options.batch_size
                         )
 

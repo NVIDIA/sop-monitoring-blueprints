@@ -88,7 +88,7 @@ RUN pip install --no-cache-dir \
     'git+https://github.com/nvidia-cosmos/cosmos-reason1.git@bf43eb078b17c76bdc10866d311c3fec24007238#subdirectory=cosmos_reason1_utils'
 
 # Copy application code
-COPY sop_monitoring /workspace/sop_monitoring/sop_monitoring
-ENV PYTHONPATH=/workspace/sop_monitoring
+COPY sop_monitoring /workspace/sop-inference-bp/sop_monitoring
+ENV PYTHONPATH=/workspace/sop-inference-bp
 
 CMD ["python", "-m", "sop_monitoring.service.vlm_inference"]

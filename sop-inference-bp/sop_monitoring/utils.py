@@ -7,18 +7,24 @@
 # disclosure or distribution of this material and related documentation
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
-FROM python:3.13-alpine
+"""
+Utility functions for sop_monitoring
+"""
+from __future__ import annotations
 
-# Set working directory
-WORKDIR /workspace
+import logging
 
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    gradio==5.38.0 \
-    requests==2.32.4 \
-    openai==1.97.0
+_LOGGER = logging.getLogger(__name__)
 
-# Copy application code
-COPY sop_monitoring /workspace/sop-inference-bp/sop_monitoring
-ENV PYTHONPATH=/workspace/sop-inference-bp
-CMD ["python", "-m", "sop_monitoring.client.webapp"]
+def setup_logging(log_level_name: str) -> None:
+    try:
+        log_level = getattr(logging, log_level_name.upper())
+    except AttributeError:
+        _LOGGER.error("Invalid log level: %s. Using INFO instead.", log_level_name)
+        log_level = logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format="[%(asctime)s][%(filename)s:%(lineno)d][%(levelname)s] %(message)s"
+    )
+

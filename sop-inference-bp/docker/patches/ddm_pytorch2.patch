@@ -1,5 +1,5 @@
 diff --git a/DDM-Net/modeling/resnetGEBD.py b/DDM-Net/modeling/resnetGEBD.py
-index 4ce3d24..204152b 100644
+index 4ce3d24..3b03756 100644
 --- a/DDM-Net/modeling/resnetGEBD.py
 +++ b/DDM-Net/modeling/resnetGEBD.py
 @@ -4,7 +4,7 @@ import torch.nn.functional as F
@@ -11,6 +11,18 @@ index 4ce3d24..204152b 100644
  from .resnet import ResNet18
  from .transformer import Transformer
  from .co_transformer import Co_Transformer
+@@ -592,8 +592,9 @@ class resnetGEBD(nn.Module):
+         self.cross_transformer1 = Co_Transformer()
+         self.cross_transformer2 = Co_Transformer()
+ 
+-        self.pos = PositionEmbeddingSine()
+-        self.pos2 = PositionEmbeddingSine(num_locations=5)
++        assert type(self.frames_per_side) == int
++        num_locations = 2 * self.frames_per_side + 1 # center frame + frames_per_side frames on each side
++        self.pos = PositionEmbeddingSine(num_locations=num_locations)
+ 
+     def forward(self, x):
+         # (bs, num_frames, C, H, W)
 diff --git a/DDM-Net/utils/helper.py b/DDM-Net/utils/helper.py
 index 84081c3..97680f8 100644
 --- a/DDM-Net/utils/helper.py

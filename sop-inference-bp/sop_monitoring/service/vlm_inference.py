@@ -30,8 +30,9 @@ from .redis_database import RadisDatabase
 from .utils import (
     create_redis_client,
     get_hostname,
-    setup_logging
 )
+
+from ..utils import setup_logging
 
 _LOGGER = logging.getLogger(__name__)
 

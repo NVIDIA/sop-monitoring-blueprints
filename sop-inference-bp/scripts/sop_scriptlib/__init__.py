@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
@@ -7,18 +8,3 @@
 # disclosure or distribution of this material and related documentation
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
-FROM python:3.13-alpine
-
-# Set working directory
-WORKDIR /workspace
-
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    gradio==5.38.0 \
-    requests==2.32.4 \
-    openai==1.97.0
-
-# Copy application code
-COPY sop_monitoring /workspace/sop-inference-bp/sop_monitoring
-ENV PYTHONPATH=/workspace/sop-inference-bp
-CMD ["python", "-m", "sop_monitoring.client.webapp"]

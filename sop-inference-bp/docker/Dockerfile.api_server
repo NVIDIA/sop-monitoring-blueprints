@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir \
     uvicorn-worker==0.3.0
 
 # Copy application code
-COPY sop_monitoring /workspace/sop_monitoring/sop_monitoring
-ENV PYTHONPATH=/workspace/sop_monitoring
+COPY sop_monitoring /workspace/sop-inference-bp/sop_monitoring
+ENV PYTHONPATH=/workspace/sop-inference-bp
 # NOTE: This is for development only. For production, use gunicorn, which is called in compose.yml file.
 CMD ["python", "-m", "sop_monitoring.service.api_server"]

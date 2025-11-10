@@ -19,10 +19,9 @@ from dataclasses import dataclass
 import torch
 import torch.multiprocessing as mp
 
-from .utils import setup_logging
-
 from ..multi_gpu_utils import init_mp_spawn
 from ..vlm import CosmosReason1 as VlmModel
+from ..utils import setup_logging
 
 _LOGGER = logging.getLogger(__name__)
 

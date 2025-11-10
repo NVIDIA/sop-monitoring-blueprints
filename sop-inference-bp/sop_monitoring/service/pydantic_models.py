@@ -84,27 +84,30 @@ class DdmNetChunkingOptions(BaseModel):
         "extra": "forbid"
     }
     algorithm: Literal[ChunkingAlgoName.DDM_NET]
-    threshold: float = Field(0.8, gt=0.1, lt=1.0, description="Threshold for DdmNet chunking. "
+    threshold: float = Field(0.6, gt=0.1, lt=1.0, description="Threshold for DdmNet chunking. "
                              "The lower, the more sensitive the chunking is.The value should be in (0.1, 1.0)"
-                             "Default is 0.8.")
-    min_length_sec: float = Field(1.0, gt=0, description="Minimum length of a chunk in seconds. "
-                                  "Default is 1.0 seconds.")
-    max_length_sec: float = Field(60.0, gt=0, description="Hint for maximum length of a chunk in seconds. "
-                                  "It is not garanteed that the chunk will be smaller than this value. "
-                                  "But the algorithm will try to keep the chunk length below this value "
-                                  "and not cut at the event boundaries. "
-                                  "Default is 60 seconds.")
+                             "Default is 0.6.")
+    min_length_sec: float = Field(1.0,
+                                  gt=0,
+                                  deprecated=True,
+                                  description="This field is deprecated, no longer effective, "
+                                              "and will be removed in the next release. "
+                                              "Please use `nms_sec` instead.")
+    max_length_sec: float = Field(60.0,
+                                  gt=0,
+                                  deprecated=True,
+                                  description="This field is deprecated, no longer effective, "
+                                              "and will be removed in the next release. "
+                                              "Please use `nms_sec` instead.")
+    nms_sec: float = Field(0.0,
+                           ge=0.0,
+                           description="The half-length of the window to perform non-maximun suppression. "
+                                       "The default value is roughly 0.025 * video length in seconds")
     batch_size: int = Field(8, ge=2, description="Batch size for DdmNet chunking. "
                                   "Default is 8. The larger the batch size, the more memory is used. "
                                   "But the larger the batch size, the faster the chunking is. "
                                   "The batch size must be a power of 2. "
                                   "The batch size must be greater than or equal to 2.")
-
-    @model_validator(mode="after")
-    def check_values(self):
-        if self.max_length_sec <= self.min_length_sec:
-            raise ValueError("max_length_sec must be greater than min_length_sec")
-        return self
 
 class CosmosReasonChunkingOptions(BaseModel):
     model_config = {
