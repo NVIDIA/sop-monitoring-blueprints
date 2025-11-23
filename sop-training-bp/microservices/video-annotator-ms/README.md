@@ -27,8 +27,9 @@ Please refer to training BP deployment for running the whole service.
 
 ### 1. Action Configuration
 - Upload `actions.json` file containing action definitions
-- Format: `{"actions": ["(1) Pick up ...", "(2) Put down ..."]}`
+- Format: `{"actions": ["(1) picking up ...", "(2) putting down ..."]}`
     * Each action should look like "(N) ...."
+    * Each action should start with present continuous tense
 - Actions serve as instructions & choices for video annotation
 
 ### 2. Video Upload

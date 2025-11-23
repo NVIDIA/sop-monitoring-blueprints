@@ -204,6 +204,11 @@ After setting up training BP, there would be 3 microservices running.
 ## Tutorial
 This blueprint provide a [tutorial notebook](tutorials/sop_monitoring_training_flow.ipynb) for illustrating the usage via API calls.
 
+There's detail information for each microservices in below README
+1. [Annotation](microservices/video-annotator-ms/README.md)
+2. [Data / QA Generation](microservices/data-generation-pipeline/README.md)
+3. [VLM Fine-tuning](microservices/cr1_training_ms/README.md)
+
 
 ## Troubleshooting
 
