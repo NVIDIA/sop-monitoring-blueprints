@@ -49,7 +49,7 @@ def prepare_sample_qas(action_json):
 
     for i, cur_action in enumerate(all_actions, 1):
         cleaned_action = clean_sentence(cur_action)
-        cleaned_action = f"({i})" + cleaned_action
+        cleaned_action = f"({i}) " + cleaned_action
 
         choices += cleaned_action
 
