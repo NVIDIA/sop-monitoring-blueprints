@@ -49,6 +49,9 @@ function App() {
   // Data augmentation and VLM training states
   const [augmentedDatasets, setAugmentedDatasets] = useState({});
 
+  // Temporary context for single video re-annotation
+  const [tempReAnnotationContext, setTempReAnnotationContext] = useState(null);
+
   // Load results from backend API on component mount
   useEffect(() => {
     fetchAllVideoResults();
@@ -74,23 +77,51 @@ function App() {
       // Transform the backend data format to match our frontend format
       const transformedResults = {};
 
-      for (const [dataId, videosData] of Object.entries(datasetsData)) {
-        transformedResults[dataId] = {};
+      for (const [dataId, datasetInfo] of Object.entries(datasetsData)) {
+        // Handle new structure where datasetInfo contains actions and videos
+        // Add safety check for datasetInfo being null/undefined
+        if (!datasetInfo) continue;
+
+        let videosData = {};
+        let datasetActions = [];
+
+        // Check if it's the new structure (has 'videos' property) or old structure (is the videos object itself)
+        if (datasetInfo.videos && typeof datasetInfo.videos === 'object') {
+            videosData = datasetInfo.videos;
+            datasetActions = datasetInfo.actions || [];
+        } else {
+            // Assume it's the old structure where the value itself is the videos object
+            // But we need to be careful not to treat simple properties as video objects
+            videosData = datasetInfo;
+        }
+
+        transformedResults[dataId] = {
+          actions: datasetActions,
+          videos: {}
+        };
 
         for (const [videoId, videoData] of Object.entries(videosData)) {
-          transformedResults[dataId][videoId] = {
-            originalFilename: videoData.original_file_name,
-            clips: videoData.clips.map(clip => ({
+          // Defensive check: ensure videoData is an object and has expected fields
+          if (!videoData || typeof videoData !== 'object') continue;
+
+          // Skip if it looks like metadata (e.g. 'actions' array in old structure mix)
+          if (videoId === 'actions' || Array.isArray(videoData)) continue;
+
+          transformedResults[dataId].videos[videoId] = {
+            id: videoId, // Ensure ID is preserved
+            originalFilename: videoData.original_file_name || "Unknown",
+            clips: Array.isArray(videoData.clips) ? videoData.clips.map(clip => ({
               id: clip.id,
-              filename: clip.filename,
-              start_time: clip.start_time,
-              end_time: clip.end_time,
-              duration: clip.duration,
-              action_description: clip.action_description,
-              created_at: videoData.processed_at // Use processed_at as created_at for clips
-            })),
-            totalDuration: videoData.total_duration,
-            processedAt: videoData.processed_at
+              filename: clip.filename || "",
+              start_time: clip.start_time || 0,
+              end_time: clip.end_time || 0,
+              duration: clip.duration || 0,
+              action_description: clip.action_description || "",
+              action_index: clip.action_index, // Capture action_index
+              created_at: videoData.processed_at
+            })) : [],
+            totalDuration: videoData.total_duration || 0,
+            processedAt: videoData.processed_at || new Date().toISOString()
           };
         }
       }
@@ -166,6 +197,7 @@ function App() {
     const totalDuration = clips.reduce((sum, clip) => sum + parseFloat(clip.duration), 0);
 
     const result = {
+      id: videoId,
       originalFilename: videoData.filename,
       clips: clips.map(clip => ({
         id: clip.id,
@@ -174,6 +206,7 @@ function App() {
         end_time: clip.end_time,
         duration: clip.duration,
         action_description: clip.action_description,
+        action_index: clip.action_index,
         created_at: clip.created_at || new Date().toISOString()
       })),
       totalDuration: totalDuration,
@@ -183,13 +216,19 @@ function App() {
     // Group results by data_id
     const dataIdToUse = currentDataId || 'unknown';
 
-    setAllVideoResults(prev => ({
-      ...prev,
-      [dataIdToUse]: {
-        ...(prev[dataIdToUse] || {}),
-        [videoId]: result
-      }
-    }));
+    setAllVideoResults(prev => {
+        const prevDataset = prev[dataIdToUse] || { actions: actions, videos: {} };
+        return {
+            ...prev,
+            [dataIdToUse]: {
+                ...prevDataset,
+                videos: {
+                    ...prevDataset.videos,
+                    [videoId]: result
+                }
+            }
+        };
+    });
   };
 
   // Handle augmentation completion
@@ -438,12 +477,56 @@ function App() {
   };
 
   // Handle timestamp submission (from ActionTimestampEditor)
-  const handleTimestampsSubmitted = (success, clipsCount, submissionErrorMsg, clips = []) => {
+  const handleTimestampsSubmitted = async (success, clipsCount, submissionErrorMsg, clips = []) => {
     if (!isBatchModeActive) {
         if (success && clips.length > 0) {
             // Save to global results for single video mode
             addVideoResult(uploadedVideo.id, uploadedVideo, clips);
             console.log(`Timestamps for ${uploadedVideo?.filename} submitted, ${clipsCount} clips created and saved.`);
+
+            // Check if we need to restore previous context (from single video re-annotation)
+            if (tempReAnnotationContext) {
+                console.log("Restoring previous context:", tempReAnnotationContext);
+
+                // Try to sync backend FIRST before switching frontend state
+                if (tempReAnnotationContext.dataId) {
+                     try {
+                        const response = await fetch(`${API_BASE_URL}/api/v1/dataset/${tempReAnnotationContext.dataId}/set_current`, {
+                            method: 'POST'
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.detail || "Server returned error");
+                        }
+                     } catch (err) {
+                        console.error("Failed to restore backend context:", err);
+                        alert(`Warning: Timestamp saved successfully, BUT failed to return to previous dataset context.\n\nTo ensure consistency, the workflow will be reset to Step 1. Please re-select your dataset or upload actions again.\n\nError: ${err.message}`);
+
+                        // Fallback: Reset to INITIAL state for safety
+                        setTempReAnnotationContext(null);
+                        setUploadedVideo(null);
+                        setActionsFile(null);
+                        setActions([]);
+                        setCurrentDataId(null);
+                        setWorkflowState('INITIAL');
+                        resetStep2Uploader();
+                        setError('');
+                        return;
+                     }
+                }
+
+                // If sync successful, restore frontend state
+                setCurrentDataId(tempReAnnotationContext.dataId);
+                setActions(tempReAnnotationContext.actions);
+                setWorkflowState(tempReAnnotationContext.workflowState);
+
+                setTempReAnnotationContext(null);
+                setUploadedVideo(null);
+                resetStep2Uploader();
+                setError('');
+                return;
+            }
 
             // For single video mode: automatically go back to step 2 after successful submission
             setUploadedVideo(null);
@@ -478,6 +561,96 @@ function App() {
 
     // Crucially, call processNextVideoInQueue with the updated index and existing queue
     processNextVideoInQueue(nextIndex, videoQueue);
+  };
+
+  // Re-annotate a specific video
+  const handleReAnnotateVideo = (datasetId, videoId) => {
+    const dataset = allVideoResults[datasetId];
+    if (!dataset || !dataset.videos[videoId]) return;
+
+    const videoData = dataset.videos[videoId];
+
+    // Save current context ONLY if we are not already in a re-annotation session
+    if (!tempReAnnotationContext) {
+        setTempReAnnotationContext({
+            dataId: currentDataId,
+            actions: actions,
+            workflowState: workflowState
+        });
+    }
+
+    // Set context
+    setCurrentDataId(datasetId);
+    if (dataset.actions && dataset.actions.length > 0) {
+        setActions(dataset.actions);
+    }
+
+    // Prepare initial timestamps from existing clips
+    // Sort by start time to be safe
+    const sortedClips = [...videoData.clips].sort((a, b) => parseFloat(a.start_time) - parseFloat(b.start_time));
+    const initialTimestamps = sortedClips.map(clip => ({
+        timestamp: parseFloat(clip.end_time),
+        actionIndex: clip.action_index !== undefined ? clip.action_index : 0
+    }));
+
+    // Set video state
+    setUploadedVideo({
+        id: videoId,
+        filename: videoData.originalFilename,
+        url: `${API_BASE_URL}/api/v1/videos/${videoId}/download`,
+        initialTimestamps: initialTimestamps
+    });
+
+    // Move to Step 3
+    setWorkflowState('VIDEO_LOADED');
+    setError('');
+
+    // Scroll to top
+    window.scrollTo(0, 0);
+  };
+
+  // Load a dataset context (Re-annotate dataset)
+  const handleLoadDataset = async (datasetId) => {
+    const dataset = allVideoResults[datasetId];
+    if (!dataset) return;
+
+    if (window.confirm(`Load dataset "${datasetId}" for annotation? This will set the current actions and allow you to add more videos.`)) {
+        // Call backend to update current_data_id
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/v1/dataset/${datasetId}/set_current`, {
+                method: 'POST',
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('Failed to set current dataset on backend:', errorData);
+                // Alert user and STOP flow to prevent inconsistency
+                alert(`Error: Failed to sync dataset context with server. Cannot switch dataset.\n\nServer Error: ${errorData.detail || 'Unknown error'}`);
+                return;
+            } else {
+                console.log(`Successfully set backend context to dataset ${datasetId}`);
+            }
+        } catch (e) {
+            console.error('Error calling set_current_dataset API:', e);
+            alert(`Network Error: Failed to communicate with server. Cannot switch dataset.\n\nPlease check your connection or server status.`);
+            return;
+        }
+
+        // Only proceed if backend sync was successful
+        setCurrentDataId(datasetId);
+        if (dataset.actions && dataset.actions.length > 0) {
+            setActions(dataset.actions);
+        }
+
+        // Clear any temporary re-annotation context as we are explicitly switching dataset
+        setTempReAnnotationContext(null);
+
+        setWorkflowState('ACTIONS_LOADED');
+        setUploadedVideo(null);
+        resetStep2Uploader();
+        setError('');
+        window.scrollTo(0, 0);
+    }
   };
 
   // Reset workflow
@@ -689,7 +862,8 @@ function App() {
                     actions={actions}
                     uploadedVideoId={uploadedVideo.id}
                     videoUrl={uploadedVideo.url}
-                    key={`editor-${uploadedVideo.id}`} // Force recreate component when video changes
+                    initialTimestamps={uploadedVideo.initialTimestamps} // Pass initial timestamps
+                    key={`editor-${uploadedVideo.id}-${uploadedVideo.initialTimestamps ? 'reanno' : 'new'}`} // Force recreate component
                     onTimestampsSubmitted={handleTimestampsSubmitted}
                   />
                 </Card.Body>
@@ -705,6 +879,8 @@ function App() {
               allVideoResults={allVideoResults}
               onClearAllResults={clearAllResults}
               onRefreshResults={refreshAllVideoResults}
+              onReAnnotateVideo={handleReAnnotateVideo}
+              onLoadDataset={handleLoadDataset}
             />
           </Col>
         </Row>

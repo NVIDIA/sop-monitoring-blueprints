@@ -26,7 +26,12 @@ const DataAugmentationPanel = ({ allVideoResults, augmentedDatasets, onAugmentat
 
   // Get available dataset IDs
   const availableDatasetIds = Object.keys(allVideoResults).filter(
-    datasetId => Object.keys(allVideoResults[datasetId]).length > 0
+    datasetId => {
+        const dataset = allVideoResults[datasetId];
+        // Support new structure {videos: {...}} or old structure {...}
+        const videos = (dataset && dataset.videos) ? dataset.videos : dataset;
+        return videos && Object.keys(videos).length > 0;
+    }
   );
 
   // Clear any existing polling interval (used on unmount and when job completes/fails)
@@ -74,11 +79,14 @@ const DataAugmentationPanel = ({ allVideoResults, augmentedDatasets, onAugmentat
           });
 
           // Save augmented dataset info and notify parent
+          const datasetInfo = allVideoResults[selectedDatasetId] || {};
+          const videos = (datasetInfo.videos && typeof datasetInfo.videos === 'object') ? datasetInfo.videos : datasetInfo;
+
           const newAugmentedDataset = {
             status: 'completed',
-            videoCount: Object.keys(allVideoResults[selectedDatasetId] || {}).length,
-            totalClips: Object.values(allVideoResults[selectedDatasetId] || {})
-              .reduce((sum, video) => sum + video.clips.length, 0)
+            videoCount: Object.keys(videos).length,
+            totalClips: Object.values(videos)
+              .reduce((sum, video) => sum + (video.clips ? video.clips.length : 0), 0)
           };
           if (onAugmentationComplete) {
             onAugmentationComplete(datasetId, newAugmentedDataset);
@@ -180,12 +188,33 @@ const DataAugmentationPanel = ({ allVideoResults, augmentedDatasets, onAugmentat
   };
 
   const getDatasetStats = (datasetId) => {
-    const datasetResults = allVideoResults[datasetId];
+    const datasetInfo = allVideoResults[datasetId];
+    if (!datasetInfo) return { videoCount: 0, totalClips: 0, totalDuration: 0 };
+
+    // Handle new structure {videos: {...}} vs old structure (direct videos object)
+    const datasetResults = (datasetInfo.videos && typeof datasetInfo.videos === 'object')
+      ? datasetInfo.videos
+      : datasetInfo;
+
     const videoCount = Object.keys(datasetResults).length;
+
     const totalClips = Object.values(datasetResults)
-      .reduce((sum, video) => sum + video.clips.length, 0);
+      .reduce((sum, video) => {
+        // Ensure video is an object and has clips array
+        if (video && Array.isArray(video.clips)) {
+            return sum + video.clips.length;
+        }
+        return sum;
+      }, 0);
+
     const totalDuration = Object.values(datasetResults)
-      .reduce((sum, video) => sum + video.totalDuration, 0);
+      .reduce((sum, video) => {
+        // Ensure video is an object and has totalDuration
+        if (video && typeof video.totalDuration === 'number') {
+            return sum + video.totalDuration;
+        }
+        return sum;
+      }, 0);
 
     return { videoCount, totalClips, totalDuration };
   };

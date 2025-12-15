@@ -83,6 +83,28 @@ app = FastAPI(
 )
 
 
+@app.post("/api/v1/dataset/{data_id}/set_current")
+async def set_current_dataset(data_id: str = Path(..., description="Data ID to set as current")):
+    """Set the current global data_id to an existing dataset"""
+    global current_data_id
+
+    try:
+        # Verify dataset exists
+        dataset = await postgres_db.get_data(data_id, Dataset)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {data_id} not found")
+
+        current_data_id = data_id
+        app_logger.info(f"Set current_data_id to existing dataset: {data_id}")
+
+        return {"status": "success", "message": f"Current dataset set to {data_id}", "data_id": data_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        app_logger.error(f"Error setting current dataset: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/v1/upload")
 async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
     """Upload video file"""
@@ -106,9 +128,6 @@ async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
     )
 
     try:
-        # Generate unique video ID
-        video_id = str(uuid.uuid4())
-
         # Ensure video directory exists
         videos_dir = os.path.join(const.VIDEO_ROOT, current_data_id)
 
@@ -119,11 +138,33 @@ async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
             safe_basename = f"{name_without_ext}" + const.DEFAULT_VIDEO_EXTENSION
             app_logger.info(f"Normalized filename to: {safe_basename}")
 
-        # Create safe filename with UUID to prevent conflicts
-        # Use only the basename to avoid path separator issues
-        safe_filename = f"{video_id}{const.ID_NAME_SEPARATOR}{safe_basename}"
-        temp_file_path = os.path.join(videos_dir, f"temp_{safe_filename}")
-        final_file_path = os.path.join(videos_dir, safe_filename)
+        # Check if video with same original filename already exists in this dataset
+        # We need to list all videos in this dataset and check their names
+        # The names in DB are stored as "{uuid}_{original_name}"
+        existing_videos = await postgres_db.list_data(Video, condition={"dataset_id": current_data_id})
+
+        video_id = None
+        final_file_name = None
+
+        for v in existing_videos:
+            # Check if the stored filename ends with "_" + safe_basename
+            if v.name.endswith(const.ID_NAME_SEPARATOR + safe_basename):
+                app_logger.info(f"Found existing video for {safe_basename}: {v.id}")
+                video_id = v.id
+                final_file_name = v.name
+                break
+
+        if not video_id:
+            # Generate unique video ID if new
+            video_id = str(uuid.uuid4())
+            # Create safe filename with UUID to prevent conflicts
+            final_file_name = f"{video_id}{const.ID_NAME_SEPARATOR}{safe_basename}"
+            app_logger.info(f"New video upload: {safe_basename} -> {video_id}")
+        else:
+            app_logger.info(f"Overwriting existing video: {safe_basename} (ID: {video_id})")
+
+        temp_file_path = os.path.join(videos_dir, f"temp_{final_file_name}")
+        final_file_path = os.path.join(videos_dir, final_file_name)
 
         # Save original file to temporary location first
         with open(temp_file_path, "wb") as f:
@@ -168,20 +209,38 @@ async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
                 status_code=500, detail=f"Video conversion failed: {str(e)}"
             )
 
-        # Save metadata to database
-        await postgres_db.insert_data(
-            Video,
-            id=video_id,
-            dataset_id=current_data_id,
-            name=safe_filename,
-            mime_type="video/mp4",
-            file_size=final_file_size,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-        )
+        # Save or Update metadata to database
+        # If video_id existed, we update; if not, we insert.
+        # However, upsert logic is simpler if we just check existence again or use delete-then-insert
+        # But delete-then-insert might break foreign keys (cascade).
+        # Since we are reusing video_id, we should UPDATE the record or just let it be if attributes haven't changed.
+        # But file_size might have changed.
+
+        existing_video_record = await postgres_db.get_data(video_id, Video)
+
+        if existing_video_record:
+            await postgres_db.update_data(
+                video_id,
+                Video,
+                file_size=final_file_size,
+                updated_at=datetime.now()
+            )
+            app_logger.info(f"Updated existing video record: {video_id}")
+        else:
+            await postgres_db.insert_data(
+                Video,
+                id=video_id,
+                dataset_id=current_data_id,
+                name=final_file_name,
+                mime_type="video/mp4",
+                file_size=final_file_size,
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+            )
+            app_logger.info(f"Inserted new video record: {video_id}")
 
         app_logger.info(
-            f"File '{safe_filename}' (original: '{original_filename}') successfully converted and saved to {converted_file_path} and recorded in database, ID: {video_id}"
+            f"File '{final_file_name}' (original: '{original_filename}') successfully converted and saved to {converted_file_path} and recorded in database, ID: {video_id}"
         )
 
         return VideoUploadResponse(
@@ -375,6 +434,7 @@ async def get_datasets_info() -> Dict:
                         "end_time": annotation.end_time,
                         "duration": annotation.end_time - annotation.start_time,
                         "action_description": annotation.action_description,
+                        "action_index": annotation.action_index,
                     }
 
                 clips_info = await asyncio.gather(
@@ -389,7 +449,10 @@ async def get_datasets_info() -> Dict:
                     "processed_at": processed_at,
                     "clips": clips_info,
                 }
-            all_datasets_info[dataset.id] = dataset_info
+            all_datasets_info[dataset.id] = {
+                "actions": dataset.actions,
+                "videos": dataset_info
+            }
 
         return all_datasets_info
 
@@ -894,6 +957,32 @@ async def split_video(
             raise HTTPException(status_code=400, detail="No valid timestamps")
 
         app_logger.info(f"Final valid timestamps to process: {valid_timestamps}")
+
+        # Clean up existing chunks and annotations for this video to allow re-annotation
+        existing_chunks = await postgres_db.list_data(Chunk, condition={"video_id": video_id})
+        if existing_chunks:
+            app_logger.info(f"Found {len(existing_chunks)} existing chunks for video {video_id}. Deleting them for re-annotation.")
+
+            # Get video name without extension for folder path
+            video_name_without_ext = os.path.splitext(video_metadata.name)[0]
+            clips_subfolder = os.path.join(
+                const.VIDEO_ROOT,
+                video_metadata.dataset_id,
+                video_name_without_ext
+            )
+
+            # Remove all chunk files
+            for chunk in existing_chunks:
+                chunk_file_path = os.path.join(clips_subfolder, chunk.name)
+                if os.path.exists(chunk_file_path):
+                    try:
+                        os.remove(chunk_file_path)
+                        app_logger.info(f"Deleted old chunk file: {chunk_file_path}")
+                    except Exception as e:
+                        app_logger.warning(f"Failed to delete chunk file {chunk_file_path}: {e}")
+
+                # Delete from database (Cascade should handle annotations)
+                await postgres_db.delete_data(chunk.id, Chunk)
 
         # Use moviepy to split video
         result_clips = await _split_video_by_timestamps(

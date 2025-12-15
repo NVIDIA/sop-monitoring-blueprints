@@ -14,7 +14,7 @@ import { Form, Button, Alert, Card, Row, Col, ProgressBar } from 'react-bootstra
 // Use nginx proxy path to avoid CORS issues
 const API_BASE_URL = '/api/annotation';
 
-const ActionTimestampEditor = ({ actions = [], uploadedVideoId, videoUrl, onTimestampsSubmitted }) => {
+const ActionTimestampEditor = ({ actions = [], uploadedVideoId, videoUrl, initialTimestamps, onTimestampsSubmitted }) => {
   // State for dynamic timestamp blocks
   const [timestampBlocks, setTimestampBlocks] = useState([]);
   const [currentTime, setCurrentTime] = useState(0);
@@ -155,12 +155,22 @@ const ActionTimestampEditor = ({ actions = [], uploadedVideoId, videoUrl, onTime
 
   // Initialize timestamp blocks when actions are loaded and video duration is available
   useEffect(() => {
-    if (actions.length > 0 && videoDuration > 0 && timestampBlocks.length === 1 && timestampBlocks[0].timestamp === 0) {
+    if (actions.length > 0 && videoDuration > 0) {
+        // Check if we have initial timestamps passed (from re-annotation)
+        if (initialTimestamps && initialTimestamps.length > 0) {
+             // Only initialize if we haven't modified it yet (check against default state)
+             if (timestampBlocks.length === 1 && timestampBlocks[0].timestamp === 0) {
+                 console.log("Loading initial timestamps for re-annotation:", initialTimestamps);
+                 setTimestampBlocks(initialTimestamps);
+                 setMessage("Loaded existing annotations. You can modify them and submit to overwrite.");
+             }
+        } else if (timestampBlocks.length === 1 && timestampBlocks[0].timestamp === 0) {
       // Initialize the first block with a reasonable timestamp
       const initialTimestamp = Math.min(videoDuration / 2, videoDuration - 1);
       setTimestampBlocks([{ timestamp: initialTimestamp, actionIndex: 0 }]);
     }
-  }, [actions, videoDuration]);
+    }
+  }, [actions, videoDuration, initialTimestamps]);
 
   // Initialize video element array when timestampBlocks change
   useEffect(() => {
@@ -240,10 +250,13 @@ const ActionTimestampEditor = ({ actions = [], uploadedVideoId, videoUrl, onTime
       const currentTimestamp = timestampBlocks[afterIndex].timestamp;
       const nextTimestamp = insertIndex < timestampBlocks.length ? timestampBlocks[insertIndex].timestamp : videoDuration;
 
-      // Set new timestamp to halfway between current and next timestamp
+      // Set new timestamp to just after the previous event's end time (+ a few frames worth)
+      // This allows user to drag forward naturally following the video timeline
+      const smallOffset = Math.min(0.5, (nextTimestamp - currentTimestamp) * 0.1); // 0.5 sec or 10% of gap, whichever is smaller
       newTimestamp = Math.min(
-        currentTimestamp + Math.max((nextTimestamp - currentTimestamp) / 2, videoDuration / 20),
-        videoDuration - 1
+        currentTimestamp + smallOffset,
+        nextTimestamp - 0.1, // Ensure it's at least 0.1s before the next event
+        videoDuration - 0.1
       );
     }
 

@@ -14,7 +14,7 @@ import { Card, Button, Row, Col, ListGroup, Accordion, Badge, Form, InputGroup, 
 // Use nginx proxy path to avoid CORS issues
 const API_BASE_URL = '/api/annotation';
 
-const AllClipsViewer = ({ allVideoResults, onClearAllResults, onRefreshResults }) => {
+const AllClipsViewer = ({ allVideoResults, onClearAllResults, onRefreshResults, onReAnnotateVideo, onLoadDataset }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('newest'); // newest, oldest, filename, duration
   const [isClearing, setIsClearing] = useState(false);
@@ -24,10 +24,16 @@ const AllClipsViewer = ({ allVideoResults, onClearAllResults, onRefreshResults }
   // Get all data_ids from results
   const dataIds = Object.keys(allVideoResults || {});
 
-  // Set default active tab to the most recent data_id
+  // Set default active tab to the most recent data_id whenever dataIds changes
+  // Also ensure activeDataId is valid
   useEffect(() => {
-    if (dataIds.length > 0 && !activeDataId) {
+    if (dataIds.length > 0) {
+      // If no active ID, or current active ID is not in the list anymore, select the first one
+      if (!activeDataId || !dataIds.includes(activeDataId)) {
       setActiveDataId(dataIds[0]);
+      }
+    } else {
+        setActiveDataId('');
     }
   }, [dataIds, activeDataId]);
 
@@ -46,15 +52,21 @@ const AllClipsViewer = ({ allVideoResults, onClearAllResults, onRefreshResults }
   }
 
   // Get results for active data_id
-  const currentDataResults = allVideoResults[activeDataId] || {};
+  const currentDataInfo = allVideoResults[activeDataId] || {};
+  // Handle both old format (direct object) and new format ({videos: {}}) for backward compatibility if needed,
+  // though we fully switched in App.js
+  const currentDataResults = (currentDataInfo.videos && typeof currentDataInfo.videos === 'object')
+    ? currentDataInfo.videos
+    : {};
 
   // Filter and sort results for current dataset
   const filteredResults = Object.entries(currentDataResults).filter(([videoId, result]) => {
+    if (!result) return false; // Safety check
     if (!searchTerm) return true;
     const searchLower = searchTerm.toLowerCase();
     return (
-      result.originalFilename.toLowerCase().includes(searchLower) ||
-      result.clips.some(clip => clip.filename.toLowerCase().includes(searchLower))
+      (result.originalFilename && result.originalFilename.toLowerCase().includes(searchLower)) ||
+      (result.clips && result.clips.some(clip => clip.filename && clip.filename.toLowerCase().includes(searchLower)))
     );
   });
 
@@ -79,7 +91,8 @@ const AllClipsViewer = ({ allVideoResults, onClearAllResults, onRefreshResults }
 
   // Calculate overall statistics across all datasets
   const overallStats = dataIds.reduce((stats, dataId) => {
-    const dataResults = allVideoResults[dataId];
+    const dataInfo = allVideoResults[dataId] || {};
+    const dataResults = dataInfo.videos || {};
     const videos = Object.keys(dataResults).length;
     const clips = Object.values(dataResults).reduce((sum, result) => sum + result.clips.length, 0);
     return {
@@ -130,7 +143,8 @@ const AllClipsViewer = ({ allVideoResults, onClearAllResults, onRefreshResults }
 
   // Clear specific dataset version
   const clearDatasetFiles = async (dataId) => {
-    const dataResults = allVideoResults[dataId] || {};
+    const dataInfo = allVideoResults[dataId] || {};
+    const dataResults = dataInfo.videos || {};
     const videosCount = Object.keys(dataResults).length;
     const clipsCount = Object.values(dataResults).reduce((sum, result) => sum + result.clips.length, 0);
 
@@ -302,6 +316,18 @@ You may need to manually check the server storage or contact an administrator.`)
             </small>
           </Col>
           <Col xs="auto" className="d-flex align-items-center gap-2">
+            {activeDataId && onLoadDataset && (
+                 <Button
+                    variant="outline-primary"
+                    size="sm"
+                    onClick={() => onLoadDataset(activeDataId)}
+                    title="Load this dataset to add more videos or modify actions"
+                    className="d-flex align-items-center"
+                  >
+                    <i className="bi bi-pencil-square me-2"></i>
+                    Re-annotate Dataset
+                  </Button>
+            )}
             {activeDataId && (
               <Button
                 variant="warning"
@@ -391,7 +417,8 @@ You may need to manually check the server storage or contact an administrator.`)
             variant="pills"
           >
             {dataIds.map(dataId => {
-              const dataResults = allVideoResults[dataId] || {};
+              const dataInfo = allVideoResults[dataId] || {};
+              const dataResults = dataInfo.videos || {};
               const videosCount = Object.keys(dataResults).length;
               const clipsCount = Object.values(dataResults).reduce((sum, result) => sum + result.clips.length, 0);
 
@@ -484,6 +511,20 @@ You may need to manually check the server storage or contact an administrator.`)
                       </div>
                     </div>
                     <div className="d-flex align-items-center">
+                      {onReAnnotateVideo && (
+                        <Button
+                          variant="outline-primary"
+                          size="sm"
+                          className="me-3"
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevent accordion toggle
+                            onReAnnotateVideo(activeDataId, videoId);
+                          }}
+                        >
+                          <i className="bi bi-pencil me-1"></i>
+                          Re-annotate
+                        </Button>
+                      )}
                       <Badge bg="info" className="me-2">
                         {result.clips.length} clips
                       </Badge>
