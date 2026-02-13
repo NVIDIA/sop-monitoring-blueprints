@@ -96,3 +96,17 @@ CREATE TABLE training_job (
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );
+
+
+CREATE TABLE ddm_training_job (
+    id VARCHAR PRIMARY KEY,
+    aug_dataset_id VARCHAR,
+    status training_status_enum,
+    total_steps INT,
+    current_step INT,
+    progress FLOAT,
+    process_pid INT,
+    loss FLOAT,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);

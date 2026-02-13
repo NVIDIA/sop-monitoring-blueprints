@@ -1,108 +1,138 @@
-######################################################################################################
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
-######################################################################################################
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import ast
 import copy
+import re
 import os
-
+import json
+import random
 import pydantic
 import toml
+from cosmos_reason1_utils.text import create_conversation
 from cosmos_reason1_utils.vision import VisionConfig
 from cosmos_rl.launcher.worker_entry import main as launch_worker
 from cosmos_rl.policy.config import Config
-from datasets import load_dataset
-from torch.utils.data import ConcatDataset, Dataset
-from transformers import AutoTokenizer
+from cosmos_rl.utils.logging import logger
+from torch.utils.data import Dataset
 
 
 class CustomConfig(pydantic.BaseModel):
     vision: VisionConfig = pydantic.Field(default=VisionConfig(fps=8, max_pixels=81920, max_frames=8))
     """Vision processor config."""
 
+    system_prompt: str = pydantic.Field(
+        default="Answer the questions.",
+        description="System prompt to add to conversations"
+    )
+    """System prompt to add to conversations"""
+
 
 class CosmosSFTDataset(Dataset):
-    def __init__(self, dataset: Dataset, config: Config, custom_config: CustomConfig):
+    def __init__(self, config: Config, custom_config: CustomConfig):
         self.config = config
-        self.dataset = dataset
         self.custom_config = custom_config
         self.vision_kwargs = custom_config.vision.model_dump(exclude_none=True)
+        self.system_prompt = custom_config.system_prompt
 
-        if config.train.train_policy.dataset.split:
-            if isinstance(config.train.train_policy.dataset.split, list):
-                dataset_list = []
-                for split_name in config.train.train_policy.dataset.split:
-                    dataset_list.append(self.dataset[split_name])
-                self.dataset = ConcatDataset(dataset_list)
-            else:
-                assert isinstance(config.train.train_policy.dataset.split, str)
-                self.dataset = self.dataset[config.train.train_policy.dataset.split]
+        # load multiple json files
+        self.datasets = []
+        self.mm_files_paths = {}
 
-        # get multi-modal files paths
-        video_clips_paths = [os.path.dirname(name) for name in config.train.train_policy.dataset.name]
-        for video_clips_path in video_clips_paths:
-            if not os.path.exists(video_clips_path):
-                raise FileNotFoundError(
-                    f"Dataset directory {video_clips_path} does not exist. Please check the dataset path."
-                )
-            mm_files_paths = {}
-            for root, dirs, files in os.walk(video_clips_path):
-                for file in files:
-                    if file.endswith((".mp4", ".avi", ".mov")):  # Common video extensions
-                        mm_files_paths[file] = os.path.join(root, file)
-            if not hasattr(self, "mm_files_paths"):
-                self.mm_files_paths = {}
-            self.mm_files_paths.update(mm_files_paths)
+        for _, (annotation_path, split_name) in enumerate(zip(config.train.train_policy.dataset.name, config.train.train_policy.dataset.split)):
+
+            # Load JSON data
+            logger.info(f"Loading JSON dataset from {annotation_path}")
+            annotations = json.load(open(annotation_path))
+
+            # Get media path
+            # Use directory of annotation file as media path
+            media_path = os.path.dirname(annotation_path)
+
+            # Build media files mapping for this dataset
+            if os.path.exists(media_path):
+                for root, _, files in os.walk(media_path):
+                    for file in files:
+                        if file.lower().endswith((".mp4", ".avi", ".mov", ".jpg", ".jpeg", ".png")): # Common video and image extensions
+                            self.mm_files_paths[file] = os.path.join(root, file)
+
+            # Store dataset info
+            for item in annotations:
+                item['_split'] = split_name
+                item['_media_path'] = media_path
+            logger.info(f"Loaded {len(annotations)} samples from {annotation_path} for split {split_name}")
+            self.datasets.extend(annotations)
+
+        # shuffle datasets
+        random.shuffle(self.datasets)
+        logger.info(f"Total samples loaded: {len(self.datasets)}")
+        logger.info(f"Total video files found: {len(self.mm_files_paths)}")
+
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.datasets)
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
         """
         Return a tuple of (prompt, reference answer)
         """
-        payload = self.dataset[idx]
+        payload = self.datasets[idx]
         conversations = copy.deepcopy(payload["conversations"])
 
-        for conv in conversations:
-            # Transform the conversation format to the format required by vllm
-            # role/content <- from/value, user/assistant <- human/gpt
-            # Transform conversation format: from/value -> role/content, human/gpt -> user/assistant
-            if "from" in conv and "value" in conv:
-                conv["role"] = conv.pop("from")
-                conv["content"] = conv.pop("value")
+        user_prompt = conversations[0]["value"]
+        response = conversations[1]["value"]
 
-                if conv["role"] == "human":
-                    conv["role"] = "user"
-                elif conv["role"] == "gpt":
-                    conv["role"] = "assistant"
+        if user_prompt is None:
+            raise ValueError(f"No user prompt found in sample {idx}")
+        if response is None:
+            raise ValueError(f"No assistant response found in sample {idx}")
 
-            if conv["role"] == "user":
-                assert isinstance(conv["content"], str), "User message must be string"
-                # Rewrite to support image/video tokens
-                content = [
-                    {
-                        "type": "video",
-                        "video": self.mm_files_paths[payload["video"].split("/")[-1]],
-                        **self.vision_kwargs,
-                    },
-                    {
-                        "type": "text",
-                        "text": conv["content"],
-                    },
-                ]
-                conv["content"] = content
-        # add a new role: "system", with content: "Answer the questions."
-        conversations.insert(0, {"role": "system", "content": "Answer the questions."})
+        # Handle images and videos
+        images = payload.get("image", None) or payload.get("images", None)
+        if images:
+            images = [images] if isinstance(images, str) else images
+
+            processed_images = []
+            for img in images:
+                image_filename = os.path.basename(img)
+                processed_images.append(self.mm_files_paths[image_filename])
+            images = processed_images
+
+        videos = payload.get("video", None) or payload.get("videos", None)
+        if videos:
+            videos = [videos] if isinstance(videos, str) else videos
+
+            processed_videos = []
+            for vid in videos:
+                video_filename = os.path.basename(vid)
+                processed_videos.append(self.mm_files_paths[video_filename])
+            videos = processed_videos
+
+        # Remove image and video tags from user prompt
+        user_prompt = re.sub(r"(\n)?</?(image|video)>(\n)?", "", user_prompt)
+
+        conversations = create_conversation(
+            system_prompt=self.system_prompt,
+            user_prompt=user_prompt,
+            response=response,
+            images=images,
+            videos=videos,
+            vision_kwargs=self.vision_kwargs,
+        )
+
         return conversations
 
 
@@ -120,16 +150,7 @@ if __name__ == "__main__":
 
     # custom config
     custom_config = CustomConfig.model_validate(config_kwargs["custom"])
-    if isinstance(config.train.train_policy.dataset.name, list):
-        data_files = {}
-        for split, name in zip(config.train.train_policy.dataset.split, config.train.train_policy.dataset.name):
-            print(f"Loading json dataset from {name}")
-            data_files[split] = name
-        dataset = load_dataset("json", data_files=data_files)
-    else:
-        # Download HF dataset only on launcher worker
-        dataset = load_dataset(config.train.train_policy.dataset.name, config.train.train_policy.dataset.subset)
 
     launch_worker(
-        dataset=CosmosSFTDataset(dataset=dataset, config=config, custom_config=custom_config),
+        dataset=CosmosSFTDataset(config=config, custom_config=custom_config),
     )

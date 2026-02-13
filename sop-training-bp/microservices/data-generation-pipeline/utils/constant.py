@@ -19,10 +19,13 @@ FAILED_STATUS = "failed"
 PENDING_STATUS = "pending"
 
 # Augmentation stage names
-STAGE_CONFIG_TO_BCQ = "config_to_bcq"
-STAGE_CONFIG_TO_MCQ = "config_to_mcq"
-STAGE_GOLDEN_GQA_TO_GQA = "golden_gqa_to_gqa"
-STAGE_GQA_TO_GQAS = "gqa_to_gqas"
+STAGE_CONFIG_TO_BCQ = "bcq"
+STAGE_CONFIG_TO_MCQ = "sequential_mcq"
+STAGE_GOLDEN_GQA_TO_GQA = "golden_gqa"
+STAGE_GQA_TO_GQAS = "gqas"
+STAGE_CONFIG_TO_DMCQ = "dynamic_mcq"
+STAGE_CONFIG_TO_DS = "dynamic_shuffling"
+STAGE_CONFIG_TO_EN = "extra_negative"
 
 
 DEFAULT_VIDEO_EXTENSION = "mp4"

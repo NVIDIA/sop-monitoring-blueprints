@@ -12,7 +12,7 @@
 
 CREATE TABLE dataset (
     id VARCHAR PRIMARY KEY,
-    actions VARCHAR[] -- array of actions
+    actions VARCHAR[], -- array of actions
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );

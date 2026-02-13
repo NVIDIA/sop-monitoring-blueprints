@@ -1,0 +1,1544 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DeepStream SOP API",
+    "description": "APIs for NVDS SOP CV and VLM cycle detection",
+    "contact": {
+      "name": "NVIDIA",
+      "url": "https://nvidia.com/"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "tags": [
+          "Chat Completions"
+        ],
+        "summary": "OpenAI-compatible chat endpoint",
+        "operationId": "create_chat_completion_v1_chat_completions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ChatCompletionResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChatCompletionStreamResponse"
+                    }
+                  ],
+                  "title": "Response Create Chat Completion V1 Chat Completions Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Received an invalid request possibly containing unsupported or out-of-range parameter values.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The requested model does not exist.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files": {
+      "get": {
+        "tags": [
+          "File and Stream Management"
+        ],
+        "summary": "List Files",
+        "description": "List all files in the medatadata storage",
+        "operationId": "list_files_v1_files_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileList"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "File and Stream Management"
+        ],
+        "summary": "Upload File",
+        "description": "Uploads a file and returns the file object.",
+        "operationId": "upload_file_v1_files_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_v1_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObject"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}/content": {
+      "get": {
+        "tags": [
+          "File and Stream Management"
+        ],
+        "summary": "Get File Content",
+        "description": "Downloads the content of a specific file.",
+        "operationId": "get_file_content_v1_files__file_id__content_get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/files/{file_id}": {
+      "delete": {
+        "tags": [
+          "File and Stream Management"
+        ],
+        "summary": "Delete File",
+        "description": "Deletes a file and its metadata.",
+        "operationId": "delete_file_v1_files__file_id__delete",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "tags": [
+          "Models"
+        ],
+        "summary": "List Models",
+        "description": "List available models endpoint",
+        "operationId": "list_models_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/metadata": {
+      "get": {
+        "tags": [
+          "Metadata"
+        ],
+        "summary": "Provide DS SOP Metadata",
+        "description": "Show DS SOP Metadata",
+        "operationId": "show_metadata_v1_metadata_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DSSOPMetadataResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/live": {
+      "get": {
+        "tags": [
+          "Health Check"
+        ],
+        "summary": "Service liveness check",
+        "description": "Indicates if the service is alive",
+        "operationId": "health_live_v1_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthSuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/startup": {
+      "get": {
+        "tags": [
+          "Health Check"
+        ],
+        "summary": "Microservice startup status",
+        "description": "Indicates if the service is alive",
+        "operationId": "health_startup_v1_startup_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthSuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ready": {
+      "get": {
+        "tags": [
+          "Health Check"
+        ],
+        "summary": "Service ready check",
+        "description": "Indicates if the service is ready to receive inference requests",
+        "operationId": "health_ready_v1_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthSuccessResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service is not ready to receive requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/metrics": {
+      "get": {
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "Get Prometheus metrics",
+        "description": "Get Prometheus metrics",
+        "operationId": "metrics_v1_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_upload_file_v1_files_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "purpose"
+        ],
+        "title": "Body_upload_file_v1_files_post"
+      },
+      "CameraInputContent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "input_camera",
+            "title": "Type",
+            "description": "The type of the input_camera content.",
+            "default": "input_camera"
+          },
+          "input_camera": {
+            "$ref": "#/components/schemas/InputCamera",
+            "description": "Reference to the camera URL"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "input_camera"
+        ],
+        "title": "CameraInputContent",
+        "description": "Camera content model"
+      },
+      "ChatCompletionMessage-Input": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Role of the message sender (e.g., 'user', 'system')"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/TextContent"
+                        },
+                        {
+                          "$ref": "#/components/schemas/VideoURLContent"
+                        },
+                        {
+                          "$ref": "#/components/schemas/VideoFileContent"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CameraInputContent"
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type",
+                        "mapping": {
+                          "input_camera": "#/components/schemas/CameraInputContent",
+                          "input_video": "#/components/schemas/VideoFileContent",
+                          "text": "#/components/schemas/TextContent",
+                          "video_url": "#/components/schemas/VideoURLContent"
+                        }
+                      }
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Content",
+            "description": "List of content items (text and/or images) or a string for responses"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "ChatCompletionMessage",
+        "description": "Message model"
+      },
+      "ChatCompletionMessage-Output": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Role of the message sender (e.g., 'user', 'system')"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/TextContent"
+                        },
+                        {
+                          "$ref": "#/components/schemas/VideoURLContent"
+                        },
+                        {
+                          "$ref": "#/components/schemas/VideoFileContent"
+                        },
+                        {
+                          "$ref": "#/components/schemas/CameraInputContent"
+                        }
+                      ],
+                      "discriminator": {
+                        "propertyName": "type",
+                        "mapping": {
+                          "input_camera": "#/components/schemas/CameraInputContent",
+                          "input_video": "#/components/schemas/VideoFileContent",
+                          "text": "#/components/schemas/TextContent",
+                          "video_url": "#/components/schemas/VideoURLContent"
+                        }
+                      }
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Content",
+            "description": "List of content items (text and/or images) or a string for responses"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "ChatCompletionMessage",
+        "description": "Message model"
+      },
+      "ChatCompletionRequest": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatCompletionMessage-Input"
+            },
+            "type": "array",
+            "title": "Messages",
+            "description": "List of messages in the conversation"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "ID of the model to use for completion. This is a placeholder for now."
+          },
+          "max_completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Completion Tokens",
+            "description": "Maximum number of tokens to generate. This is a placeholder for now."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1.8446744073709552E+19,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Seed for the random number generator."
+          },
+          "stream": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream",
+            "description": "Whether to stream the response.",
+            "default": false
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Temperature for the random number generator."
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P",
+            "description": "Top-p for the random number generator."
+          },
+          "chunking_options": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DdmNetChunkingOptions"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "algorithm",
+                  "mapping": {
+                    "ddm-net": "#/components/schemas/DdmNetChunkingOptions"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunking Options",
+            "description": "Options for the chunking algorithm. Default is DdmNetChunkingOptions.",
+            "default": {
+              "algorithm": "ddm-net",
+              "threshold": 0.8,
+              "min_length_sec": 1.0,
+              "max_length_sec": 60.0
+            }
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "title": "ChatCompletionRequest",
+        "description": "Chat completion request model"
+      },
+      "ChatCompletionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the chat completion"
+          },
+          "object": {
+            "type": "string",
+            "const": "chat.completion",
+            "title": "Object",
+            "description": "Object type, always 'chat.completion'",
+            "default": "chat.completion"
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "ID of the model used for completion. This is a placeholder for now."
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/ChatCompletionResponseChoice"
+            },
+            "type": "array",
+            "title": "Choices",
+            "description": "List of completion choices"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Usage statistics for the request."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "model",
+          "choices"
+        ],
+        "title": "ChatCompletionResponse",
+        "description": "Chat completion response model"
+      },
+      "ChatCompletionResponseChoice": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "Index of the choice"
+          },
+          "message": {
+            "$ref": "#/components/schemas/ChatCompletionMessage-Output",
+            "description": "The message"
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish Reason",
+            "description": "The reason for the completion to finish"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason",
+            "description": "The reason for the completion to stop"
+          },
+          "token_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Ids",
+            "description": "The token IDs"
+          },
+          "chunk_metadata_list": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Metadata List",
+            "description": "The metadata of the chunk"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "index",
+          "message"
+        ],
+        "title": "ChatCompletionResponseChoice"
+      },
+      "ChatCompletionResponseStreamChoice": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "Index of the choice",
+            "default": 0
+          },
+          "delta": {
+            "$ref": "#/components/schemas/DeltaMessage",
+            "description": "The delta message"
+          },
+          "finish_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish Reason",
+            "description": "The reason for the completion to finish"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Reason",
+            "description": "The reason for the completion to stop"
+          },
+          "token_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Ids",
+            "description": "The token IDs"
+          },
+          "chunk_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Metadata",
+            "description": "The metadata of the chunk"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "delta"
+        ],
+        "title": "ChatCompletionResponseStreamChoice"
+      },
+      "ChatCompletionStreamResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the chat completion"
+          },
+          "object": {
+            "type": "string",
+            "const": "chat.completion.chunk",
+            "title": "Object",
+            "default": "chat.completion.chunk"
+          },
+          "created": {
+            "type": "integer",
+            "title": "Created"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "ID of the model used for completion"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/ChatCompletionResponseStreamChoice"
+            },
+            "type": "array",
+            "title": "Choices",
+            "description": "List of completion choices"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Usage statistics for the request."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "model",
+          "choices"
+        ],
+        "title": "ChatCompletionStreamResponse"
+      },
+      "DSSOPMetadataResponse": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Version of the DS SOP",
+            "default": "1.0.0"
+          },
+          "modelInfo": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Modelinfo",
+            "description": "List of model information"
+          },
+          "licenseInfo": {
+            "$ref": "#/components/schemas/LicenseInfoResponse",
+            "description": "License information"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "modelInfo",
+          "licenseInfo"
+        ],
+        "title": "DSSOPMetadataResponse",
+        "description": "DS SOP metadata response model"
+      },
+      "DdmNetChunkingOptions": {
+        "properties": {
+          "algorithm": {
+            "type": "string",
+            "const": "ddm-net",
+            "title": "Algorithm",
+            "description": "Algorithm for DdmNet chunking.",
+            "default": "ddm-net"
+          },
+          "threshold": {
+            "type": "number",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.1,
+            "title": "Threshold",
+            "description": "Threshold for DdmNet chunking. The lower, the more sensitive the chunking is.The value should be in (0.1, 1.0)Default is 0.8.",
+            "default": 0.8
+          },
+          "min_length_sec": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Min Length Sec",
+            "description": "Minimum length of a chunk in seconds. Default is 1.0 seconds.",
+            "default": 1.0
+          },
+          "max_length_sec": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Max Length Sec",
+            "description": "Hint for maximum length of a chunk in seconds. It is not garanteed that the chunk will be smaller than this value. But the algorithm will try to keep the chunk length below this value and not cut at the event boundaries. Default is 60 seconds.",
+            "default": 60.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DdmNetChunkingOptions"
+      },
+      "DeletionStatus": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "ID of the deleted file"
+          },
+          "object": {
+            "type": "string",
+            "const": "file.deleted",
+            "title": "Object",
+            "description": "Object type, always 'file.deleted'",
+            "default": "file.deleted"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "description": "Whether the file was successfully deleted",
+            "default": true
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "DeletionStatus"
+      },
+      "DeltaMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "system"
+            ],
+            "title": "Role",
+            "description": "The role of the message sender (e.g., 'user', 'assistant', 'system')",
+            "default": "assistant"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "The text content"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "DeltaMessage",
+        "description": "Delta message model"
+      },
+      "ErrorInfo": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Error message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "Error type"
+          },
+          "param": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Param",
+            "description": "Error parameter"
+          },
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Error code"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "message",
+          "type",
+          "code"
+        ],
+        "title": "ErrorInfo"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorInfo",
+            "description": "Error information"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse"
+      },
+      "FileList": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list",
+            "title": "Object",
+            "description": "Object type, always 'list'",
+            "default": "list"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FileObject"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "List of file objects"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "FileList"
+      },
+      "FileObject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique file identifier with prefix 'file-'"
+          },
+          "object": {
+            "type": "string",
+            "const": "file",
+            "title": "Object",
+            "description": "Object type, always 'file'",
+            "default": "file"
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes",
+            "description": "Size of the file in bytes"
+          },
+          "created_at": {
+            "type": "integer",
+            "title": "Created At",
+            "description": "Unix timestamp when the file was created"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "Original filename of the uploaded file"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Purpose of the file upload. This field has not been well-defined yet. It's just a placeholder for now.",
+            "default": ""
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "id",
+          "bytes",
+          "created_at",
+          "filename"
+        ],
+        "title": "FileObject"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthSuccessResponse": {
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "health.response",
+            "title": "Object",
+            "description": "Object type, always 'health.response'",
+            "default": "health.response"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Message of the health response"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "HealthSuccessResponse"
+      },
+      "InputCamera": {
+        "properties": {
+          "camera_id": {
+            "type": "string",
+            "title": "Camera Id",
+            "description": "ID of the camera"
+          },
+          "camera_vendor": {
+            "type": "string",
+            "const": "Basler",
+            "title": "Camera Vendor",
+            "description": "Vendor of the camera. Default is 'Basler'.",
+            "default": "Basler"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config",
+            "description": "Configuration of the camera. This is the caemra setting path"
+          },
+          "camera_format": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "RGB",
+                  "UYVY",
+                  "YUY2"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Format",
+            "description": "Format of the camera. Default is None, which means the format is determined by the service."
+          },
+          "camera_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Width",
+            "description": "Width of the camera. Default is None, which means the width is determined by the service."
+          },
+          "camera_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Height",
+            "description": "Height of the camera. Default is None, which means the height is determined by the service."
+          },
+          "camera_fps_num": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Fps Num",
+            "description": "FPS numerator of the camera. Default is None, which means the FPS numerator is determined by the service."
+          },
+          "camera_fps_den": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Fps Den",
+            "description": "FPS denominator of the camera. Default is None, which means the FPS denominator is determined by the service."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "camera_id"
+        ],
+        "title": "InputCamera",
+        "description": "Input camera model"
+      },
+      "LicenseInfoResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The name of the NIMs license."
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "The path of the NIMs license file inside the container."
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "The size, in bytes, of the license file."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "The url of the NIMs license."
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "The content type of the license."
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "The content inside the NIMs license file."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "size",
+          "url",
+          "type",
+          "content"
+        ],
+        "title": "LicenseInfoResponse"
+      },
+      "TextContent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "text",
+            "title": "Type",
+            "description": "Content type, always 'text'",
+            "default": "text"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The text content"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TextContent",
+        "description": "Text content model"
+      },
+      "UsageInfo": {
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer",
+            "title": "Prompt Tokens",
+            "description": "The number of prompt tokens",
+            "default": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens",
+            "description": "The number of total tokens",
+            "default": 0
+          },
+          "completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Tokens",
+            "description": "The number of completion tokens"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "UsageInfo"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VideoFileContent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "input_video",
+            "title": "Type",
+            "description": "The type of the video data content in base64",
+            "default": "input_video"
+          },
+          "file_id": {
+            "type": "string",
+            "title": "File Id",
+            "description": "Input video file ID"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "file_id"
+        ],
+        "title": "VideoFileContent",
+        "description": "Video content model"
+      },
+      "VideoURL": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Video file data in any of the three forms:\n        <br>    - A URL of the video file.\n        <br>    - Base64 encoded video data in form of `data:video/{format};base64,{base64encodedvideo}`.\n        "
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "VideoURL"
+      },
+      "VideoURLContent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "video_url",
+            "title": "Type",
+            "description": "The type of the content part.",
+            "default": "video_url"
+          },
+          "video_url": {
+            "$ref": "#/components/schemas/VideoURL",
+            "description": "Reference to the video URL or base64 encoded video data in the form of `data:video/mp4;base64,{base64encodedvideo}`"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_url"
+        ],
+        "title": "VideoURLContent",
+        "description": "Video content model"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Chat Completions",
+      "description": "Operations to generate chat completions for a video stream"
+    },
+    {
+      "name": "File and Stream Management",
+      "description": "Files are used to upload and manage media files."
+    },
+    {
+      "name": "Health Check",
+      "description": "Operations to check system health."
+    },
+    {
+      "name": "Metrics",
+      "description": "Operations to get metrics."
+    },
+    {
+      "name": "Models",
+      "description": "List and describe the various models available in the API."
+    },
+    {
+      "name": "Metadata",
+      "description": "Operations to get service metadata."
+    }
+  ]
+}

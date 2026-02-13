@@ -131,6 +131,8 @@ async def start_fine_tuning(dataset_id: str, background_tasks: BackgroundTasks):
             message="Fine-tuning job has been queued and will start shortly",
             created_at=training_jobs_cache.get(job_id)["created_at"],
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error starting fine-tuning: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to start fine-tuning: {str(e)}")
@@ -166,6 +168,8 @@ async def get_training_status(job_id: str):
             created_at=job["created_at"],
             updated_at=job["updated_at"],
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting training status: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to get training status: {str(e)}")
@@ -256,7 +260,7 @@ async def run_fine_tuning(job_id: str, dataset_path: str, train_config_path: str
 
         # Validate model path
         if not os.path.exists(train_config["policy"]["model_name_or_path"]):
-            raise Exception(f"Model path does not exist: {train_config['policy']['model_name_or_path']}")
+            raise FileNotFoundError(f"Model path does not exist: {train_config['policy']['model_name_or_path']}")
 
         cmd = [
             "cosmos-rl",

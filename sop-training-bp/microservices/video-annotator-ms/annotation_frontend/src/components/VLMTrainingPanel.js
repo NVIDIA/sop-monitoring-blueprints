@@ -537,7 +537,7 @@ const VLMTrainingPanel = ({ augmentedDatasets, onTrainingComplete }) => {
 
             <div className="mt-3 p-3 bg-light rounded">
               <small className="text-muted">
-                <strong>Training Configuration:</strong> Training configuration can be found in train_config.yaml<br />
+                <strong>Training Configuration:</strong> Training configuration can be found in train_config.toml<br />
                 <strong>Note:</strong> Training progress is monitored automatically.
                 You can safely navigate away and return to check status.
               </small>

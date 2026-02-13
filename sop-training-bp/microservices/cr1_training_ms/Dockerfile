@@ -22,11 +22,11 @@ ARG PYTHON_VERSION=3.12
 
 ENV TZ=Etc/UTC
 
-RUN apt-get update -y && apt-get upgrade -y
+RUN apt-get update -y && apt-get upgrade -y \
+&& DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
+    curl git lsb-release tzdata \
+&& apt-get purge -y cuda-compat-*
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    curl git lsb-release tzdata
-RUN apt-get purge -y cuda-compat-*
 
 #################################################
 ## Install NVIDIA GDRCopy
@@ -74,17 +74,23 @@ RUN apt-get update -qq && \
 RUN python${PYTHON_VERSION} -m venv /opt/venv/cosmos_rl
 ENV PATH="/opt/venv/cosmos_rl/bin:$PATH"
 
-RUN pip install -U pip setuptools==79.0.1 wheel==0.45.1 psutil==7.1.2
+RUN pip install -U pip psutil==7.1.2 setuptools==79.0.1 wheel==0.45.1
 # even though we don't depend on torchaudio, vllm does. in order to
 # make sure the cuda version matches, we install it here.
-RUN pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+# this pytorch 2.8.0 will be overridden by the vllm installation below (To pytorch 2.9.1). just as a starting point.
+RUN pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
 
+# 1. Install other dependencies first
 RUN pip install \
-    torchao==0.12.0 \
-    vllm==0.10.0 \
-    flash-attn==2.8.2 --no-build-isolation\
-    https://download.pytorch.org/whl/cu128/flashinfer/flashinfer_python-0.2.6.post1%2Bcu128torch2.7-cp39-abi3-linux_x86_64.whl
+    torchao==0.13.0 \
+    -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly \
+    flashinfer-python
 
+# 2. Install Flash Attention via Wheel (This is to control the version of flash attention)
+# using curl -L -O to handle redirects and save file, then install, then delete to save space
+RUN curl -L -O https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl \
+    && pip install flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl \
+    && rm flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
 
 ###################################################
 ## Image target: cosmos_rl

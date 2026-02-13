@@ -50,6 +50,7 @@ app.add_middleware(
 
 class VLMAugmentationService:
     def __init__(self):
+        # Intentionally left blank: no initialization logic is required at this time.
         pass
 
     async def _run_cmd(self, cmd):
@@ -285,6 +286,202 @@ class VLMAugmentationService:
 
         return True
 
+    async def _config_to_dmcq(
+        self,
+        video_root: str,
+        output_root: str,
+        output_name: str,
+        actions_json: str,
+        augment_config: Dict[str, Any],
+    ) -> bool:
+        """Dynamic MCQ generation"""
+
+        # Check request first, then environment variables as fallback
+        ext = augment_config.get("video_extention", const.DEFAULT_VIDEO_EXTENSION)
+        exclude_action = augment_config["dynamic_mcq"].get("exclude_action", "")
+        min_options = augment_config["dynamic_mcq"].get("min_options", "3")
+        max_options = augment_config["dynamic_mcq"].get("max_options", "6")
+        num_pos = augment_config["dynamic_mcq"].get("num_pos", "1")
+        num_neg = augment_config["dynamic_mcq"].get("num_neg", "2")
+        num_hard_pos = augment_config["dynamic_mcq"].get("num_hard_pos", "0")
+        num_hard_neg = augment_config["dynamic_mcq"].get("num_hard_neg", "0")
+        hard_neg_mode = augment_config["dynamic_mcq"].get("hard_neg_mode", "")
+        hard_pos_mode = augment_config["dynamic_mcq"].get("hard_pos_mode", "")
+        confusion_map = augment_config["dynamic_mcq"].get("confusion_map", "")
+
+        # make sure non-sop-action is set
+        non_sop_action = augment_config["dynamic_mcq"].get("non_sop_action", None)
+        if not non_sop_action:
+            raise HTTPException(
+                status_code=400, detail="non_sop_action action must be set for Dynamic MCQ generation"
+            )
+
+        cmd = [
+            "python",
+            "-m",
+            "vlm_aug.config_to_dynamic_mcq",
+            "--action-json",
+            actions_json,
+            "--video-root",
+            video_root,
+            "--ext",
+            ext,
+            "--exclude-action",
+            exclude_action,
+            "--min-options",
+            str(min_options),
+            "--max-options",
+            str(max_options),
+            "--non-sop-action",
+            str(non_sop_action),
+            "--num-pos",
+            str(num_pos),
+            "--num-neg",
+            str(num_neg),
+            "--num-hard-pos",
+            str(num_hard_pos),
+            "--num-hard-neg",
+            str(num_hard_neg),
+            "--hard-neg-mode",
+            hard_neg_mode,
+            "--hard-pos-mode",
+            hard_pos_mode,
+            "--confusion-map",
+            confusion_map,
+            "--output-root",
+            output_root,
+            "--output-name",
+            output_name,
+        ]
+
+        # run command
+        await self._run_cmd(cmd)
+
+        return True
+
+    async def _config_to_ds(
+        self,
+        video_root: str,
+        output_root: str,
+        output_name: str,
+        actions_json: str,
+        augment_config: Dict[str, Any],
+    ) -> bool:
+        """Dynamic Shuffling generation"""
+
+        # Check request first, then environment variables as fallback
+        ext = augment_config.get("video_extention", const.DEFAULT_VIDEO_EXTENSION)
+        exclude_action = augment_config["dynamic_shuffling"].get("exclude_action", "")
+        min_distractor = augment_config["dynamic_shuffling"].get("min_distractor", "3")
+        max_distractor = augment_config["dynamic_shuffling"].get("max_distractor", "6")
+        num_runs = augment_config["dynamic_shuffling"].get("num_runs", "1")
+        num_hard_neg = augment_config["dynamic_shuffling"].get("num_hard_neg", "0")
+        hard_neg_frames_ratio = augment_config["dynamic_shuffling"].get("hard_neg_frames_ratio", "0.1")
+
+        # make sure non-sop-action is set
+        non_sop_action = augment_config["dynamic_shuffling"].get("non_sop_action", None)
+        if not non_sop_action:
+            raise HTTPException(
+                status_code=400, detail="non_sop_action action must be set for Dynamic Shuffling generation"
+            )
+
+        cmd = [
+            "python",
+            "-m",
+            "vlm_aug.config_to_dynamic_shuffling",
+            "--action-json",
+            actions_json,
+            "--video-root",
+            video_root,
+            "--ext",
+            ext,
+            "--exclude-action",
+            exclude_action,
+            "--min-distractor",
+            str(min_distractor),
+            "--max-distractor",
+            str(max_distractor),
+            "--non-sop-action",
+            str(non_sop_action),
+            "--num-runs",
+            str(num_runs),
+            "--num-hard-neg",
+            str(num_hard_neg),
+            "--hard-neg-frames-ratio",
+            str(hard_neg_frames_ratio),
+            "--output-root",
+            output_root,
+            "--output-name",
+            output_name,
+        ]
+
+        # run command
+        await self._run_cmd(cmd)
+
+        return True
+
+    async def _config_to_en(
+        self,
+        video_root: str,
+        output_root: str,
+        output_name: str,
+        actions_json: str,
+        augment_config: Dict[str, Any],
+    ) -> bool:
+        """Extra Negative generation"""
+
+        # Check request first, then environment variables as fallback
+        ext = augment_config.get("video_extention", const.DEFAULT_VIDEO_EXTENSION)
+        exclude_action = augment_config["extra_negative"].get("exclude_action", "")
+        min_options = augment_config["extra_negative"].get("min_options", "3")
+        max_options = augment_config["extra_negative"].get("max_options", "6")
+        num_runs = augment_config["extra_negative"].get("num_runs", "1")
+        generate_all_options = augment_config["extra_negative"].get("generate_all_options", True)
+
+        # make sure non-sop-action and extra data id    are set
+        non_sop_action = augment_config["extra_negative"].get("non_sop_action", None)
+        if not non_sop_action:
+            raise HTTPException(
+                status_code=400, detail="non_sop_action action must be set for Extra Negative generation"
+            )
+        extra_negative_data_id = augment_config["extra_negative"].get("extra_negative_data_id", None)
+        if not extra_negative_data_id:
+            raise HTTPException(
+                status_code=400, detail="extra_negative_data_id must be set for Extra Negative generation"
+            )
+
+        cmd = [
+            "python",
+            "-m",
+            "vlm_aug.config_to_extra_negative",
+            "--action-json",
+            actions_json,
+            "--video-root",
+            os.path.join(const.DATASET_ROOT, extra_negative_data_id),
+            "--exclude-action",
+            exclude_action,
+            "--ext",
+            ext,
+            "--min-options",
+            str(min_options),
+            "--max-options",
+            str(max_options),
+            "--non-sop-action",
+            str(non_sop_action),
+            "--num-runs",
+            str(num_runs),
+            "--generate-all-options" if generate_all_options else "",
+            "--output-root",
+            output_root,
+            "--output-name",
+            output_name,
+        ]
+
+        # run command
+        await self._run_cmd(cmd)
+
+        return True
+
     def clean_up(self, output_root: str):
         """Clean up by remove all subdirectories except 'videos'"""
 
@@ -325,9 +522,8 @@ class VLMAugmentationService:
                 status_code=400, detail=f"No video folders found in {label_data_path}"
             )
 
-        # Define action configurations
-        # TODO: This should come from external config defined by user which augmentation they want to run
-        actions = {
+        # Define all action configurations
+        all_actions = {
             const.STAGE_CONFIG_TO_BCQ: {
                 "method": self._config_to_bcq,
                 "output_folder": "bcq",
@@ -344,7 +540,25 @@ class VLMAugmentationService:
                 "method": self._gqa_to_gqas,
                 "output_folder": "gqas",
             },
+            const.STAGE_CONFIG_TO_DMCQ: {
+                "method": self._config_to_dmcq,
+                "output_folder": "dmcq",
+            },
+            const.STAGE_CONFIG_TO_DS: {
+                "method": self._config_to_ds,
+                "output_folder": "ds",
+            },
+            const.STAGE_CONFIG_TO_EN: {
+                "method": self._config_to_en,
+                "output_folder": "en",
+            },
         }
+
+        actions = {}
+        for action_name, action_config in all_actions.items():
+            if augment_config.get(action_name, {}).get("enable", False):
+                actions[action_name] = action_config
+                app_logger.info(f"Augmentation stage {action_name} enabled")
 
         # Insert action configurations to database
         for action_name, action_config in actions.items():
@@ -518,6 +732,8 @@ async def augment(label_data_id: str) -> AugResponse:
         )
 
         return AugResponse(dataset_id=dataset_id)
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error: {str(e)}")
         app_logger.error(traceback.format_exc())
@@ -604,6 +820,8 @@ async def get_augmentation_status(dataset_id: str) -> AugmentationStatusResponse
             progress=round(progress_percentage, 2),
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error getting augmentation status: {str(e)}")
         app_logger.error(traceback.format_exc())

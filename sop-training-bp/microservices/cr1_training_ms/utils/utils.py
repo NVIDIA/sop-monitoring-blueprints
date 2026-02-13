@@ -115,7 +115,7 @@ def terminate_process_tree(process_pid: int, timeout: int = 30) -> bool:
             pass
 
         # Wait for processes to terminate gracefully
-        gone, alive = psutil.wait_procs([parent_process] + children, timeout=timeout)
+        _, alive = psutil.wait_procs([parent_process] + children, timeout=timeout)
 
         # If any processes are still alive, force kill them
         if alive:

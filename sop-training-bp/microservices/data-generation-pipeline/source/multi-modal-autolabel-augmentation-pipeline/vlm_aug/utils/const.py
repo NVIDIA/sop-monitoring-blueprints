@@ -45,6 +45,26 @@ BCQ = "config_to_bcq"
 # MCQ
 MCQ = "config_to_sequential_mcq"
 
+# DMCQ
+DMCQ = "config_to_dynamic_mcq"
+ADJACENT = "adjacent"
+CONFUSION = "confusion"
+HARD_MODES = [ADJACENT, CONFUSION]
+GT_ACTION = "gt_action"
+POS_OR_NEG = "pos_or_neg"
+HARD_MODE = "hard_mode"
+NUM_OPTIONS = "num_options"
+
+# DS
+DS = "config_to_dynamic_shuffling"
+DS_HARD_SAMPLING_MODE = ["front", "end", "random"]
+SOURCE_VIDEOS = "source_videos"
+TOTAL_FRAMES = "total_frames"
+IS_HARD = "is_hard"
+
+# EN
+EN = "config_to_extra_negative"
+
 # dynamic sampling
 META = "meta"
 MIN_FRAMES = "min_frames"

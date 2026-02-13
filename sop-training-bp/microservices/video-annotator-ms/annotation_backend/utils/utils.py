@@ -15,7 +15,6 @@ import os
 import shutil
 import traceback
 from moviepy.editor import VideoFileClip
-# from moviepy.config import check as moviepy_check
 import av
 
 from utils.logger import app_logger
@@ -108,11 +107,11 @@ async def convert_to_h264(input_path: str, output_path: str) -> str:
 
         # Verify output file exists and has reasonable size
         if not os.path.exists(output_path):
-            raise Exception("Conversion completed but output file not found")
+            raise FileNotFoundError("Conversion completed but output file not found")
 
         output_size = os.path.getsize(output_path)
         if output_size < 1024:  # Less than 1KB
-            raise Exception(f"Converted file too small ({output_size} bytes)")
+            raise ValueError(f"Converted file too small ({output_size} bytes)")
 
         app_logger.info(
             f"Video conversion successful. Output size: {output_size} bytes"

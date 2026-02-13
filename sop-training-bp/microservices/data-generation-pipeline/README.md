@@ -1,6 +1,6 @@
 # VLM Data Augmentation FastAPI Service
 
-A FastAPI-based microservice for VLM (Vision Language Model) SOP monitoring data augmentation that automatically generates BCQ, MCQ and GQA format data from given SOP actions definition
+A FastAPI-based microservice for VLM (Vision Language Model) SOP monitoring data augmentation that automatically generates BCQA (Binary Choice QA), MCQA (Multiple Choice QA), GQA (General QA), DMCQA (Dynamic Multiple Choice QA), DSQA (Dynamic Shuffling QA), ENQA (Extra Negative QA) data from given SOP actions definition
 
 ## Prerequisites
 - Docker 28.2.2 or later
@@ -42,7 +42,7 @@ After setting up, there would be 1 microservice
 
    * Port: 5487 (configurable via `DATA_GEN_PORT`)
 
-   * Generates GQAs, BCQs, MCQs format data for VLM fine-tuning
+   * Generates GQAs, BCQAs, MCQAs, DSQA, DMCQA, ENQA data for VLM fine-tuning
 
       * The GQAs generation would utilize NVIDIA LLM NIM for generation
 
@@ -76,6 +76,8 @@ assets/
 ### 2. Modify Augmentation Parameters
 The parameters can be modified via `augment_config.yaml`. There's a template config inside `assets/config` folder.
 
+All augmentation stage can be disabled by setting `enable` to `false`.
+
 
 Below are the explaination for each parameter
 
@@ -83,21 +85,58 @@ Below are the explaination for each parameter
   * `video_extention`: Video extension to be used (recommend using mp4)
 
 * **BCQ (Binary QA - Yes/No question) Config**
+  * `enable`: Whether to enable BCQ augmentation stage (default `true`)
   * `negative_ratio`: The positive and negative QA ratio (2.0 means there would be 1 yes QA and 2 no QA)
   * `subject`: Who conduct the SOP action
   * `exclude_action`: Action to be excluded from the BCQ generation
 
 * **Sequential MCQ (Multiple Choices QA) Config**
+  * `enable`: Whether to enable MCQA augmentation stage (default `true`)
   * `max_chunk_len`: The maximum number of actions to be included into the generated MCQ chunk (2 means the generated MCQ chunk QA would include chunk containing action 1, chunk containing action 1 + 2, but not chunk containing action 1 + 2 + 3 or more)
   * `exclude_action`: Action to be excluded from the MCQ generation
 
 * **GQAs Config**
+  * `enable`: Whether to enable GQA augmentation stage (default `true`)
   * `llm_type`: LLM type, local or nvidia (local deploy nim or build.nvidia.com API)
   * `local_llm_url`: Local LLM URL to be used for GQA augmentation
   * `llm`: NVIDIA NIM API LLM Model to be used for GQA augmentation
   * `num_qa_llm`: Number of QA pairs to be genrerated by LLM
   * `num_qa_per_chunk`: Number of QA pairs to sample from num_qa_llm to be the final GQA pairs
   * `exclude_action`: Action to be excluded from the GQA to GQAs generation
+  * `ngc_personal_key`: The NVIDIA API key. Please noted that this would override the API Key set in `.env`
+
+* **Golden GQA**
+  * `enable`: Whether to enable golden GQA augmentation stage (default `true`)
+
+* **Dynamic MCQ**
+  * `enable`: Whether to enable DMCQA augmentation stage (default: `false`)
+  * `exclude_action`: Action to be excluded from the dynamic MCQ generation
+  * `non_sop_action`: Action index of non-SOP action option (This must be set)
+    * non-SOP action option is the action option like "none of the above", "doing action not belong to the defined SOP", etc.
+  * `min_options`: Minimum number of options (need to adjust according to the number of actions)
+  * `max_options`: Maximum number of options (need to adjust according to the number of actions)
+  * `num_pos`: Number of positive samples
+  * `num_neg`: Number of negative samples
+
+* **Dynamic Shuffling QA**
+  * `enable`: Whether to enable DSQA augmentation stage (default: `false`)
+  * `exclude_action`: Action to be excluded from the dynamic shuffling QA generation
+  * `non_sop_action`: Action index of non-SOP action option (This must be set)
+    * non-SOP action option is the action option like "none of the above", "doing action not belong to the defined SOP", etc.
+  * `min_distractor`: Minimum number of distractor videos
+  * `max_distractor`: Maximum number of distractor videos
+  * `num_runs`: Number of runs for dynamic shuffling
+
+* **Extra Negative Data QA**
+  * `enable`: Whether to enable ENQA augmentation stage (default: `false`)
+  * `exclude_action`: Extra negative source data action to be excluded from the ENQA generation
+  * `extra_negative_data_id`: ID of the other labeled data to be used as extra negative data (This must be set)
+  * `non_sop_action`: Base data action index of non-SOP action option (This must be set)
+    * non-SOP action option is the action option like "none of the above", "doing action not belong to the defined SOP", etc.
+  * `min_options`: Minimum number of options (need to adjust according to the number of actions)
+  * `max_options`: Maximum number of options (need to adjust according to the number of actions)
+  * `num_runs`: Number of runs for ENQA generation
+  * `generate_all_options`: Generate all options QA for extra negative
 
 ### 3. Conduct Data / QA Generation
 
@@ -138,9 +177,18 @@ curl -X POST "http://localhost:5487/api/v1/augment?label_data_id=your_label_data
 ├── golden_gqa/
 │   ├── videos/
 │   └── golden_gqa.json
-└── gqas/
+├── gqas/
+│   ├── videos/
+│   └── gqas.json
+├── dmcq/
+│   ├── videos/
+│   └── dmcq.json
+├── ds/
+│   ├── videos/
+│   └── ds.json
+└── en/
     ├── videos/
-    └── gqas.json
+    └── en.json
 ```
 
 ## Response Format

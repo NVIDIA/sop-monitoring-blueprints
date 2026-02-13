@@ -50,7 +50,7 @@ services:
     shm_size: 256mb
     volumes:
       - ${POSTGRES_DB_ROOT:-postgres_db}:/var/lib/postgresql/data
-      - ./db-init-scripts/01-init-tables.sql:/docker-entrypoint-initdb.d/01-init-tables.sql
+      - ./annotation_backend/db-init-scripts/01-init-tables.sql:/docker-entrypoint-initdb.d/01-init-tables.sql
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}

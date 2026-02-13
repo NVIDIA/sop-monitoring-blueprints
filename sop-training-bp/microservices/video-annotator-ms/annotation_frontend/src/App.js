@@ -15,6 +15,7 @@ import ActionTimestampEditor from './components/ActionTimestampEditor';
 import AllClipsViewer from './components/AllClipsViewer';
 import DataAugmentationPanel from './components/DataAugmentationPanel';
 import VLMTrainingPanel from './components/VLMTrainingPanel';
+import DDMTrainingPanel from './components/DDMTrainingPanel';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 
@@ -904,6 +905,18 @@ function App() {
             <Col>
               <VLMTrainingPanel
                 augmentedDatasets={augmentedDatasets}
+                onTrainingComplete={handleTrainingComplete}
+              />
+            </Col>
+          </Row>
+        )}
+
+        {/* DDM Training Panel - Visible when there are annotated results */}
+        {Object.keys(allVideoResults).length > 0 && (
+          <Row>
+            <Col>
+              <DDMTrainingPanel
+                allVideoResults={allVideoResults}
                 onTrainingComplete={handleTrainingComplete}
               />
             </Col>

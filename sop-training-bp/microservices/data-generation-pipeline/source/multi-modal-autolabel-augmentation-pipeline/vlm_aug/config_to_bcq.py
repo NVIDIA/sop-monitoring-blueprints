@@ -52,7 +52,7 @@ def prepare_sample_qas(action_json):
 
         choices += cleaned_action
 
-        if not i == len(all_actions):
+        if i != len(all_actions):
             choices += const.LINE_BREAK
 
     logging.info(f"Create BCQ config question: {const.QUESTION}.txt\n{QUESTION_TEMPLATE}")

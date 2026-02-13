@@ -1,0 +1,42 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+######################################################################################################
+nvds_action_detector/__init__.py
+nvds_action_detector/api_server.py
+nvds_action_detector/api_types.py
+nvds_action_detector/ds_3d_action_pipeline.py
+nvds_action_detector/ds_logger.py
+nvds_action_detector/ds_sop_process.py
+nvds_action_detector/messager.py
+nvds_action_detector/missing_number_detector.py
+nvds_action_detector/sop_step_checker.py
+nvds_action_detector/utils.py
+nvds_action_detector/vllm_inference.py
+nvds_action_detector/vlm_inference_client.py
+nvds_action_detector/custom_postprocess/nvds_custom_postprocess_tensor.cpp
+nvds_action_detector/custom_postprocess/Makefile
+nvds_action_detector/protos/__init__.py
+nvds_action_detector/protos/ext_pb2.py
+nvds_action_detector/protos/nv_pb2.py
+nvds_action_detector/triton_model_repo/ddm/1/ddm_net.py
+nvds_action_detector/triton_model_repo/ddm/1/model.py
+nvds_action_detector/triton_model_repo/ddm/config_template.pbtxt
+scripts/user_additional_install.sh
+license.txt
+start_server.sh
+configs/actions.json
+configs/vlm_prompts.txt
+configs/nvds_inference_template.txt
+configs/nvds_preprocess_template.txt
+configs/Emulation_0815-0000.pfs
+tests/test_api_endpoints.py
+tests/api_client_test.py
+tests/api_client_perf.py

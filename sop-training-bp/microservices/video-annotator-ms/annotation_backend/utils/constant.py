@@ -16,6 +16,7 @@ DEFAULT_VIDEO_EXTENSION = ".mp4"
 DEFAULT_ACTION_INDEX = 0
 DEFAULT_ACTION_DESCRIPTION = "Unknown Action"
 ID_NAME_SEPARATOR = "_"
+MIME_TYPE="video/mp4"
 
 VIDEO_ROOT = os.getenv("DATASET_ROOT", "/app/assets/videos")
 LOG_FILE_PATH = os.getenv("LOG_FILE_PATH", "/app/assets/logs/annotation_log")

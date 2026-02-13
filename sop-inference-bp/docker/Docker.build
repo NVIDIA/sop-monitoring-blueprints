@@ -1,0 +1,117 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+######################################################################################################
+
+# build
+# docker build . -f docker/Docker.build -t nvds-sop:1.0.0
+
+# pull ngc VSS GA as base
+ARG BASE_IMAGE="nvcr.io/nvidia/blueprint/vss-engine:2.4.1"
+
+FROM nvcr.io/nvidia/deepstream:8.0-triton-multiarch AS ds_dev
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS base
+
+RUN apt update && apt install -y \
+    python3-pybind11 \
+    python3-dev \
+    libdlpack-dev \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    pkg-config \
+    gstreamer1.0-tools \
+    cmake
+
+RUN pip install --no-cache-dir qwen-vl-utils==0.0.11 ipdb==0.13.13
+
+# installing pylon sdk
+# Check README.md for [#3rdparty-license]
+# Note: Basler Pylon SDK, which is subject to separate license terms.
+#       The [Pylon-SDK-25.10.2](https://www.baslerweb.com/en/downloads/software/1932603569/)
+#       can be obtained from the official Basler website after completing
+#       the required registration form.
+#       Users need download the Basler Pylon SDK package and rename it
+#       to `./binaries/pylon-${PYLON_VER}_linux-x86_64_setup.tar.gz`
+ARG PYLON_SDK_URL=https://downloadbsl.blob.core.windows.net/software/pylon%2025.10.2/pylon-25.10.2_linux-x86_64_setup.tar.gz
+ARG PYLON_VER=25.10.2
+RUN --mount=type=bind,source=./binaries,target=/tmp/pylon_setup,rw \
+    if [ ! -f /tmp/pylon_setup/pylon-${PYLON_VER}_linux-x86_64_setup.tar.gz ]; then \
+        curl -o /tmp/pylon_setup/pylon-${PYLON_VER}_linux-x86_64_setup.tar.gz \
+        ${PYLON_SDK_URL}; \
+    fi && \
+    mkdir -p /tmp/pylon_setup/sdk && \
+    cd /tmp/pylon_setup && tar -C ./sdk -xvf ./pylon-${PYLON_VER}_linux-x86_64_setup.tar.gz && \
+    mkdir -p /opt/pylon && \
+    tar -C /opt/pylon -xzf sdk/pylon-*.tar.gz && \
+    chmod 755 /opt/pylon
+
+ENV PYLON_ROOT=/opt/pylon
+
+# skip error for apt remove
+RUN apt remove meson ninja-build || true
+RUN pip install meson==1.10.0 ninja==1.13.0
+# install gst-plugin-pylon
+RUN --mount=type=bind,source=./binaries,target=/tmp/,rw \
+    if [ ! -d /tmp/gst-plugin-pylon ]; then \
+        git clone -b v1.0.0 --depth 1 https://github.com/basler/gst-plugin-pylon.git /tmp/gst-plugin-pylon; \
+    fi && \
+    cd /tmp/gst-plugin-pylon && export PYLON_ROOT=/opt/pylon && \
+    # Temporarily hide DeepStream lib to prevent meson from finding nvbufsurface
+    if [ -d /opt/nvidia/deepstream/deepstream/lib ]; then \
+        mv /opt/nvidia/deepstream/deepstream/lib /opt/nvidia/deepstream/deepstream/lib.tmp; \
+    fi && \
+    meson setup builddir --prefix /usr/ && \
+    ninja -C builddir && \
+    ninja -C builddir install && \
+    # Restore DeepStream lib
+    if [ -d /opt/nvidia/deepstream/deepstream/lib.tmp ]; then \
+        mv /opt/nvidia/deepstream/deepstream/lib.tmp /opt/nvidia/deepstream/deepstream/lib; \
+    fi
+
+RUN pip install playsound==1.3.0 confluent-kafka==2.12.2
+
+
+WORKDIR /opt/nvidia/nvds_sop/
+ENV PYTHONPATH=/opt/nvidia/nvds_sop/
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/tritonserver/lib/
+
+COPY --from=ds_dev /opt/nvidia/deepstream/deepstream/sources/includes /opt/nvidia/deepstream/deepstream/sources/includes
+# Copy source code
+RUN --mount=type=bind,source=.,target=/tmp/ds_sop \
+    cd /tmp/ds_sop \
+    && docker/copy_sources.sh ./ /opt/nvidia/nvds_sop/
+
+# Clone DDM from GitHub and apply patches
+RUN --mount=type=bind,source=./docker,target=/patches \
+    git clone https://github.com/MCG-NJU/DDM.git /opt/nvidia/nvds_sop/3rdparty/DDM && \
+    cd /opt/nvidia/nvds_sop/3rdparty/DDM && \
+    git checkout 941e0fb595ab85dc86724a19ed0439ad6bc3632b && \
+    git apply /patches/ddm_pytorch2.patch
+
+# Compile custom_postprocess
+RUN cd /opt/nvidia/nvds_sop/nvds_action_detector/custom_postprocess/ && make
+
+# MS playbook compliance
+ARG NSPECT_ID="NSPECT-M4BO-POGI"
+LABEL com.nvidia.mm.nspect="${NSPECT_ID}"
+COPY license.txt /opt/mm/LICENSE
+
+# add user
+# Create user with UID/GID 1001 for non-root execution and set permissions
+RUN groupadd --gid 1001 --non-unique ds_sop && \
+    useradd --home-dir /opt/nvidia/nvds_sop --no-create-home --shell /bin/bash --uid 1001 --non-unique --gid 1001 ds_sop && \
+    chown -R 1001:1001 /opt/nvidia/nvds_sop/ && chmod -R 755 /opt/nvidia/nvds_sop/ && chmod -R 755 /opt/mm/
+
+USER ds_sop:1001
+
+# ENTRYPOINT ["/opt/nvidia/nvidia_entrypoint.sh"]
+ENTRYPOINT ["./start_server.sh"]

@@ -23,7 +23,9 @@ COPY requirements.txt /workspace/
 # Install dependencies
 RUN apt-get update && apt-get install libsm6 libxext6 rclone -y
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip uninstall -y $(pip list --format=freeze | grep opencv) && rm -rf /usr/local/lib/python3.10/dist-packages/cv2/ && pip install opencv-python-headless
+RUN pip uninstall -y $(pip list --format=freeze | grep opencv) \
+    && rm -rf /usr/local/lib/python3.10/dist-packages/cv2/ \
+    && pip install opencv-python-headless
 
 # need run `pip install hatchling && python -m build` to get `dist`
 COPY dist/vlm_aug-0.0.1-py3-none-any.whl /tmp/

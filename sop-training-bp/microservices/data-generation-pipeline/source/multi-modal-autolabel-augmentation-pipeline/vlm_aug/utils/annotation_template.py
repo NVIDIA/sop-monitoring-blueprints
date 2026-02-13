@@ -32,3 +32,21 @@ dynamic_meta = {
     "max_frames": "",
     "dynamic_sample": ""
 }
+
+dmcq_meta = {
+    "gt_action": "",
+    "pos_or_neg": "",
+    "hard_mode": "",
+    "num_options": ""
+}
+
+ds_meta = {
+    "frame_cnts": [],
+    "source_videos": [],
+    "total_frames": "",
+    "is_hard": ""
+}
+
+en_meta = {
+    "num_options": ""
+}

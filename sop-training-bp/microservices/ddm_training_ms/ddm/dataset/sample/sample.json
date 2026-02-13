@@ -1,0 +1,22 @@
+{
+    "video_id": [
+        {
+            "event": "event #1",
+            "description": "step 1: ...",
+            "start_timestamp": 0.0,
+            "end_timestamp": 3.0
+        },
+        {
+            "event": "event #2",
+            "description": "step 2: ...",
+            "start_timestamp": 3.0,
+            "end_timestamp": 5.0
+        },
+        {
+            "event": "event #3",
+            "description": "step 3: ...",
+            "start_timestamp": 5.0,
+            "end_timestamp": 8.0
+        }
+    ]
+}

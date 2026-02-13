@@ -71,7 +71,10 @@ RUN set -eux; \
     rm -f /tmp/*.whl
 
 # Install web / DB dependencies for the microservice
-RUN python -m pip install --no-cache-dir fastapi==0.116.1 uvicorn[standard]==0.35.0 asyncpg==0.30.0 sqlalchemy[asyncio]==2.0.41
+RUN python -m pip install --no-cache-dir fastapi==0.116.1 \
+    uvicorn[standard]==0.35.0 \
+    asyncpg==0.30.0 \
+    sqlalchemy[asyncio]==2.0.41
 
 # Copy app files (preserve paths)
 COPY app.py run.sh ./

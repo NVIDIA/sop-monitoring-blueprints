@@ -232,7 +232,7 @@ async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
                 id=video_id,
                 dataset_id=current_data_id,
                 name=final_file_name,
-                mime_type="video/mp4",
+                mime_type=const.MIME_TYPE,
                 file_size=final_file_size,
                 created_at=datetime.now(),
                 updated_at=datetime.now(),
@@ -247,6 +247,8 @@ async def upload_video(file: UploadFile = File(...)) -> VideoUploadResponse:
             message="Video file has been successfully uploaded, converted to H264, and saved",
             file_id=video_id,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -312,6 +314,8 @@ async def upload_actions(file: UploadFile = File(...)) -> ActionsUploadResponse:
             actions=actions_array,
             data_id=new_data_id,
         )
+    except HTTPException:
+        raise
     except json.JSONDecodeError as e:
         app_logger.error(f"Invalid JSON format: {str(e)}")
         app_logger.error(traceback.format_exc())
@@ -337,6 +341,11 @@ async def reset_actions() -> ResetActionsResponse:
     global current_data_id
 
     try:
+        if current_data_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No data_id is currently set. Nothing to reset."
+            )
         old_data_id = current_data_id
         current_data_id = None
         app_logger.info(f"Reset data_id from {old_data_id} to None")
@@ -346,6 +355,8 @@ async def reset_actions() -> ResetActionsResponse:
             message="Data ID reset successfully. Ready for new dataset annotation.",
             previous_data_id=old_data_id,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error resetting data_id: {str(e)}")
         app_logger.error(traceback.format_exc())
@@ -376,6 +387,8 @@ async def get_video(video_id: str = Path(..., description="Video ID")) -> VideoM
             upload_time=metadata.created_at.isoformat(),
             mime_type=metadata.mime_type,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error getting video metadata: {str(e)}")
         raise HTTPException(
@@ -539,6 +552,8 @@ async def download_video(
             media_type=metadata.mime_type,
             headers={"Accept-Ranges": "bytes"},  # Indicate range support
         )
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error downloading video: {str(e)}")
         app_logger.error(traceback.format_exc())
@@ -620,7 +635,7 @@ async def download_chunk(
         return FileResponse(
             path=chunk_file_path,
             filename=chunk_metadata.name,
-            media_type=chunk_metadata.mime_type or "video/mp4"
+            media_type=chunk_metadata.mime_type or const.MIME_TYPE
         )
 
     except HTTPException:
@@ -718,6 +733,8 @@ async def download_all_video_clips(video_id: str = Path(..., description="Video 
             headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error creating ZIP file: {str(e)}")
         # Clean up temporary file if it exists
@@ -833,10 +850,11 @@ async def clear_dataset(
             try:
                 # Count files before deletion
                 # TODO: This should be replaced with MinIO
-                dataset_deleted_count += 1
 
                 shutil.rmtree(data_dir)
                 app_logger.info(f"Deleted data directory: {data_dir}")
+
+                dataset_deleted_count += 1
             except Exception as e:
                 app_logger.warning(
                     f"Failed to delete data directory {data_dir}: {str(e)}"
@@ -990,6 +1008,8 @@ async def split_video(
         )
 
         return {"status": "success", "clips": result_clips}
+    except HTTPException:
+        raise
     except Exception as e:
         app_logger.error(f"Error processing video split request: {str(e)}")
         app_logger.error(traceback.format_exc())
@@ -1158,6 +1178,8 @@ async def _split_video_by_timestamps(
         file_size = 0
 
         try:
+            chunk_id = str(uuid.uuid4())
+
             # Load the video clip
             full_clip = VideoFileClip(video_path)
 
@@ -1196,7 +1218,7 @@ async def _split_video_by_timestamps(
                         f"Video split produced small file ({file_size} bytes): {output_path}"
                     )
                     os.remove(output_path)
-                    raise Exception("Video split produced file that is too small")
+                    raise ValueError("Video split produced file that is too small")
 
                 # Additional validation: try to open the clip to ensure it's playable
                 try:
@@ -1207,7 +1229,7 @@ async def _split_video_by_timestamps(
                     if test_duration is None or test_duration <= 0:
                         app_logger.error("Split video has invalid duration")
                         os.remove(output_path)
-                        raise Exception("Split video has invalid duration")
+                        raise ValueError("Split video has invalid duration")
 
                     app_logger.info(
                         f"Video split successful: {output_path}, size: {file_size} bytes, duration: {test_duration}s"
@@ -1219,11 +1241,10 @@ async def _split_video_by_timestamps(
                         os.remove(output_path)
                     raise
             else:
-                raise Exception("Output file was not created")
+                raise FileNotFoundError("Output file was not created")
 
             if success:
                 # Create segment metadata
-                chunk_id = str(uuid.uuid4())
                 created_at = datetime.now()
 
                 # save chunk to database
@@ -1233,7 +1254,7 @@ async def _split_video_by_timestamps(
                     video_id=video_metadata.id,
                     name=output_filename,
                     action=action_description,
-                    mime_type="video/mp4",
+                    mime_type=const.MIME_TYPE,
                     file_size=file_size,
                     created_at=created_at,
                     updated_at=created_at,

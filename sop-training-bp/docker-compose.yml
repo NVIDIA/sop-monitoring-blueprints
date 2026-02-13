@@ -63,6 +63,36 @@ services:
       - sop-data-gen
       - metadata_db
 
+  ddm-training-microservice:
+    image: ${DDM_IMAGE:-ddm_ftms:latest}
+    build:
+      context: ./microservices/ddm_training_ms
+      dockerfile: Dockerfile
+    ports:
+      - "${DDM_PORT:-32100}:${DDM_PORT:-32100}"
+    environment:
+      - SERVICE_PORT=${DDM_PORT:-32100}
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/sop-ddm-ftms/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/sop-ddm-ftms/assets/data"
+      - "${PRETRAINED_MODEL_ROOT:-pretrained_weights}:/workspace/sop-ddm-ftms/assets/weights"
+      - "${RESULTS_ROOT:-results}:/workspace/sop-ddm-ftms/assets/results"
+      - "${TOOL_PATH:-tools}:/workspace/sop-ddm-ftms/assets/tools"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    restart: unless-stopped
+    networks:
+      - sop-network
+    depends_on:
+      - sop-data-gen
+      - metadata_db
+
   annotation-backend:
     image: ${ANNOTATION_BACKEND_IMAGE:-sop-annotation-backend:latest}
     build:

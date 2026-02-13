@@ -1,0 +1,195 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "DDM-Net Fine-tuning Microservice",
+    "description": "A microservice for fine-tuning DDM-Net models",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "fine-tuning",
+      "description": "Operations for fine-tuning DDM-Net models"
+    },
+    {
+      "name": "status",
+      "description": "Operations for checking training status and results"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check endpoint",
+        "tags": ["status"],
+        "responses": {
+          "200": {
+            "description": "Service is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/start": {
+      "post": {
+        "summary": "Start a new fine-tuning job",
+        "tags": ["fine-tuning"],
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID of the dataset to use for training"
+          },
+          {
+            "name": "validation_dataset_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "ID of the dataset to use for validation. If not provided, will use the same dataset as training"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fine-tuning job started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/status/{job_id}": {
+      "get": {
+        "summary": "Get the status of a fine-tuning job",
+        "tags": ["status"],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Training status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/all_jobs": {
+      "get": {
+        "summary": "Get all fine-tuning jobs",
+        "tags": ["status"],
+        "responses": {
+          "200": {
+            "description": "List of all training jobs"
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/cancel/{job_id}": {
+      "post": {
+        "summary": "Cancel a fine-tuning job",
+        "tags": ["fine-tuning"],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job cancellation status"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FineTuningResponse": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TrainingStatus": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "number"
+          },
+          "current_step": {
+            "type": "integer"
+          },
+          "total_steps": {
+            "type": "integer"
+          },
+          "loss": {
+            "type": "number"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}
+

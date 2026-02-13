@@ -1,345 +1,499 @@
-# SOP Monitoring Inference Blueprint
+<!--
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+-->
 
-This repository contains the SOP (Standard Operating Procedure) Monitoring system, a computer vision platform designed to analyze and monitor the execution of SOPs. It's built on a robust, containerized microservices architecture, ensuring scalability and maintainability.
+# Nvidia DeepStream SOP Documentation
 
-**Table of Contents**
+## Introduction
 
-- [Key Features ✨](#key-features-)
-- [System Architecture 🏗️](#system-architecture-️)
-- [Getting Started 🚀](#getting-started-)
-  - [Prerequisites](#prerequisites)
-  - [Installation & Setup](#installation--setup)
-- [Configuration ⚙️](#configuration-️)
-- [API Specifications 📖](#api-specifications-)
-  - [Core Endpoints](#core-endpoints)
-- [Examples & Demo UI 🖥️](#examples--demo-ui-️)
-  - [Running Examples](#running-examples)
-  - [Reference Web Application](#reference-web-application)
-- [Helper Scripts 🛠️](#helper-scripts-️)
-- [Acknowledgments 🙏](#acknowledgments-)
+The DeepStream-SOP project implements a highly optimized computer vision inference for temporal action detection and VLM-based action evaluation pipeline, designed for low-latency processing of both video files and live Basler camera streams. The system operates as a real-time, accelerated microservice that produces operational insights for SOP-focused industry applications.
 
-## Key Features ✨
+## Table of Contents
 
-* **Action Segmentation**: The system offers automatic video chunking. While uniform chunking is often sufficient, advanced algorithms that segment video based on event boundaries are also available to better handle actions of varying lengths.
+- [System Architecture](#architecture)
+- [API Schema](#api-schema)
+- [Getting started](#getting-started)
+  - [Prepare Docker Container and Deploy Environments](#prepare-docker-container-and-deploy-environments)
+  - [Download Required Model Checkpoints](#download-required-model-checkpoints)
+  - [Launch SOP Microservice](#launch-sop-microservice)
+- [Kafka Messaging Consumer](#kafka-messaging-consumer)
+- [API Tests](#api-tests)
+  - [Run API endpoints unit tests](#run-api-endpoints-unit-tests)
+  - [Run API tests for video stream & camera](#run-api-tests-for-video-file-rtsp-live-stream-and-basler-camera-inputs)
+    - [Test 1: Video File](#test-1-video-file-base64-encoded)
+    - [Test 2: RTSP Live Stream](#test-2-rtsp-live-stream)
+    - [Test 3: Basler Camera Live Streaming](#test-3-basler-camera-live-streaming)
+- [Performance Profiling](#performance-profiling)
+  - [API Client Performance Measurement](#api-client-performance-measurement)
+  - [[Optional] [Developer] Profiling: Run the performance tests for the pipeline](#optional-developer-profiling-run-the-performance-tests-for-the-pipeline)
+- [3rdparty License](#3rdparty-license)
+- [Citation](#citation)
 
-* **VLM Inference**: It uses Vision Language Models (VLMs) for advanced video analysis and evenly distributes works on multiple GPUs to efficiently handle incoming requests.
+## System Architecture
 
-* **SOP Detection**: Provides automated analysis of procedural compliance. The VLM outputs can be sent to the SOP Detection API for generating alerts and summaries.
+The DeepStream-SOP microservice architecture integrates multiple components to deliver real-time temporal action detection and VLM-based evaluation:
 
-* **RESTful API**: A comprehensive, OpenAI-compatible RESTful API allows for seamless integration with other applications and web services.
+![DeepStream SOP Architecture](docs/deepstream-sop-architecture.png)
 
-* **Reference UI**: A front-end web application is included to demonstrate how to use the APIs to build a complete alert and SOP summarization system.
+**Key Components:**
 
-## System Architecture 🏗️
+- **Input Sources**: Supports video files, RTSP streams, and Basler camera live feeds
+- **DeepStream Pipeline**: GPU-accelerated video processing using NVIDIA DeepStream SDK
+- **Temporal Action Detection**: Real-time action recognition with [DDM](https://github.com/MCG-NJU/DDM) inference via Nvidia Triton acceleration
+- **VLM Inference Evaluation**: Vision Language Model integration for intelligent action assessment using [Cosmos Reason Models](https://huggingface.co/nvidia/Cosmos-Reason1-7B) via vllm acceleration
+- **API Server**: OpenAI-compatible REST interface for stream management and status monitoring
+- **Output & Messaging**: Kafka messaging for event distribution, optional alert sounds, and video encoding capabilities
 
-The system uses a distributed microservices architecture where each component is containerized and managed by Docker Compose.
+The architecture is designed for low-latency, high-throughput processing with configurable GPU memory utilization and flexible deployment options.
 
-![System Architecture Diagram](./docs/assets/system_architecture_diagram.jpg)
+## API Schema
 
-### Core Components
+The DeepStream-SOP microservice exposes a RESTful API following OpenAI-compatible conventions. The complete API specification is available in OpenAPI 3.1.0 format.
 
-* **Nginx Ingress**: Acts as a reverse proxy, directing all external traffic to the appropriate service.
+**API Documentation:**
+- **OpenAPI Spec**: [`docs/openapi.json`](docs/openapi.json)
+- **Swagger UI**: Once the service is running, access the interactive API documentation at `http://localhost:8300/openapi.json`
 
-* **API Server**: The main entry point for all API requests that controls the overall inference workflow.
+**Main API Endpoints:**
 
-* **Redis**: Serves as a low-latency message broker for communication between services.
+- **Chat Completions** (`/v1/chat/completions`): Submit video streams for temporal action detection and VLM evaluation
+- **File Management** (`/v1/files`): Upload, list, and manage video files
+- **Health Checks** (`/v1/live`, `/v1/ready`, `/v1/startup`): Monitor service health and readiness
+- **Models** (`/v1/models`): List available models
+- **Metadata** (`/v1/metadata`): Retrieve service version and configuration information
+- **Metrics** (`/v1/metrics`): Access Prometheus-compatible metrics
 
-* **MinIO**: Provides S3-compatible object storage for files, such as uploaded videos.
+The API supports multiple input types including video files (base64 encoded), RTSP streams, and live Basler camera feeds.
 
-* **MongoDB**: The primary database for storing application and file metadata.
 
-* **Action Segmentation Service**: Responsible for chunking raw video footage for VLM inference.
+## Getting started
 
-* **VLM Inference Service**: Performs video analysis on GPUs and includes load balancing.
+### Prepare Docker Container and Deploy Environments
 
-* **SOP Checker Service**: Analyzes VLM output to detect compliance with a defined SOP, identifying any missing or out-of-order steps.
+- **Pull source code and compose for deployment**
 
-* **Reference Web UI**: A user interface for interacting with and demonstrating the system's APIs.
-
-## Getting Started 🚀
-
-This section will guide you through setting up and running the SOP Monitoring system.
-
-### Prerequisites
-
-* **OS**: Ubuntu 22.04 or later.
-
-* **Hardware**:
-
-  * 64GB of System RAM.
-
-  * At least one NVIDIA A100 GPU or a GPU with at least 80GB of RAM.
-
-* **Software**:
-
-  * Docker and Docker Compose.
-
-  * NVIDIA Driver version 570.133.07 or above.
-
-  * CUDA Version 12.8 or above.
-
-* **Account**: An NVIDIA NGC account and a personal NGC key with permissions to download base images.
-
-### Installation & Setup
-
-1. **Clone the Repository**
-
-   ```
-   git clone <repository-url>
-   cd sop-monitoring-blueprints/sop-inference-bp
-   ```
-
-2. **Login to NVCR**
-   Log in to the NVIDIA Container Registry using Docker. Follow the instructions at `ngc.nvidia.com`.
-
-   ```
-   docker login nvcr.io
-   ```
-
-3. **Build Docker Images**
-   This command builds all the service images.
-
-   ```
-   make -C docker build_services
-   ```
-
-4. **Download Required Models**
-
-   * **VLM Model**: The VLM inference service can load any pre-trained compatible model, e.g, [nvidia/Cosmos-Reason1-7B](https://huggingface.co/nvidia/Cosmos-Reason1-7B). However, to use the SOP detection APIs, you must use a VLM specifically trained for SOPs, which can be done using the SOP Training Blueprint.
-
-   * **Action Segmentation Models (Optional)**: If you plan to use `uboco` or `ddm-net` chunking algorithms, download the corresponding models.
-   For UBOCO, please check [huggingface.co/OpenGVLab/ViCLIP](http://huggingface.co/OpenGVLab/ViCLIP) for ViClip and BPE weights, and [this modelzoo](https://github.com/linjieli222/HERO_Video_Feature_Extractor/blob/main/slowfast/README/MODEL_ZOO.md) for SlowFast weights. We usually choose `Kinetics/c2/SLOWFAST_8x8_R50`.
-   For DDM-Net, please check [DDM-Net](https://github.com/MCG-NJU/DDM?tab=readme-ov-file#performance).
-
-5. **Configure Environment**
-   Navigate to the deployment directory and edit the `.env` file. You must update `VLM_INFERENCE_MODEL_PATH_ON_HOST` to the absolute path of your VLM model weights.
-
-   ```
-   cd deployment/docker_compose
-   vim .env
-   ```
-
-   You can also remove unused images from [compose.yml](./deployment/docker_compose/compose.yml). But note that most images including `action_segment_service` are by default necessary. In the future we will think about how to make users easier to turn on or off services.
-
-   `action_segment_service_cr` is disabled because we still need to investigate its capability.
-
-6. **Launch Services**
-   Start the entire application stack using Docker Compose.
-
-   ```
-   cd deployment/docker_compose
-   docker compose up -d # Use -d to run in the background
-   ```
-
-   Once started, you should see logs indicating that the VLM inference service has successfully initialized.
-
-## Configuration ⚙️
-
-The system is configured through environment variables in the [deployment/docker_compose/.env](./deployment/docker_compose/.env) file.
-
-You can roughly validate your `.env` file configuration using the helper script [`env_check.py`](./scripts/env_check.py) located in the `scripts/` directory. Run this script to check for missing or misconfigured environment variables before launching the services. This can help catch common issues early in your setup process.
-
-<details>
-<summary><strong>Click to see Key Environment Variables</strong></summary>
-
-### NGINX Ingress
-
-* `NGINX_INGRESS_PORT`: External port Nginx listens on (default: 8080).
-
-* `NGINX_INGRESS_CLIENT_MAX_BODY_SIZE`: Max size for file uploads (e.g., `2GB`).
-
-### API Server
-
-* `API_SERVER_PORT`: Internal port for the API server (default: 8000).
-
-* `API_SERVER_WORKERS`: Number of worker processes (default: 8).
-
-### VLM Inference Service
-
-* `VLM_INFERENCE_MODEL_PATH_ON_HOST`: **(Required)** Absolute path on the host to your VLM model weights.
-
-* `VLM_INFERENCE_SHM_SIZE`: Shared memory size (e.g., `8gb`).
-
-### Action Segmentation Service
-
-* `ACTION_SEGMENT_UBOCO_*_ON_HOST`: Host paths to UBOCO model files. Assign an arbitrary path if not used.
-
-* `ACTION_SEGMENT_DDM_NET_CHECKPOINT_PATH_ON_HOST`: Host path to the DDM-Net model. Assign an arbitrary path if not used.
-
-* `ACTION_SEGMENT_DDM_NET_RESOLUTION`: The resolution used to train the above DDM checkpoint. The value must be set to an integer and match with the one when finetuning DDM.
-
-* `ACTION_SEGMENT_CR_*`: Cosmos-Reason-1 as action segmentation algorithm requires different environment, so it has a suffix `_CR` to indicate the corresponding image name and path.
-
-### Databases & Brokers
-
-* `REDIS_MSG_BROKER_PORT`: Port for Redis (default: 6379).
-
-* `MINIO_API_PORT`: API port for MinIO (default: 9000).
-
-* `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`: MinIO credentials.
-
-* `MONGO_PORT`: Port for MongoDB (default: 27017).
-
-* `MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD`: MongoDB credentials.
-
-### Reference Web Application
-
-* `DEMO_WEB_APP_PORT`: Internal port for the demo UI (default: 7860).
-
-* `DEMO_WEB_APP_ROOT_PATH`: URL path for the demo UI (default: `/sopmon-ui`).
-
-</details>
-
-## API Specifications 📖
-
-The system exposes a full OpenAPI-compliant RESTful API. Once the service is running, you can access the interactive documentation:
-
-* **ReDoc**: `http://<host>:<port>/redoc`
-
-* **Swagger UI**: `http://<host>:<port>/docs`
-
-![Swagger Docs](./docs/assets/swagger_doc.jpg)
-
-### Core Endpoints
-
-#### POST /v1/chat/completions
-
-This is an OpenAI-compatible endpoint for VLM inference. It includes an optional
-custom `chunking_options` field to select the video chunking algorithm.
-
-```python
-chat_response = client.chat.completions.create(
-    model="placeholder",
-    messages=[
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "What is the operator doing?"},
-                {
-                    "type": "image_file",
-                    "image_file": {
-                        "file_id": uploaded_file.id,
-                        "chunking_options": { "algorithm": "uniform" }
-                    }
-                }
-            ]
-        }
-    ]
-)
+```
+SOP_REPO=https://github.com/NVIDIA/sop-monitoring-blueprints.git
+git clone https://github.com/NVIDIA/sop-monitoring-blueprints.git sop-monitoring-blueprints
+cd sop-monitoring-blueprints/sop-inference-bp
 ```
 
-#### File Management Endpoints (/v1/files)
+- **Download Basler Pylon SDK (Required)**
 
-These endpoints are also OpenAI-compatible and can be called using the `openai` Python package for uploading, listing, downloading, and deleting files.
+  The build requires the Basler Pylon SDK, which is subject to separate license terms. Before building:
 
-* `POST /v1/files`: Upload a file.
+  1. Visit the official Basler website: [Pylon SDK 25.10.2](https://www.baslerweb.com/en/downloads/software/1932603569/)
+  2. Complete the required registration form and agree to Basler's license terms
+  3. Download `pylon-25.10.2_linux-x86_64_setup.tar.gz`
+  4. Place the downloaded file in the `binaries/` directory:
+     ```bash
+     mkdir -p binaries
+     mv ~/Downloads/pylon-25.10.2_linux-x86_64_setup.tar.gz binaries/
+     ```
 
-* `GET /v1/files`: List all available files.
+  **Note**: If the file is not present in `binaries/`, the Docker build will attempt to download it automatically. However, you should manually download and review the license terms before building.
 
-* `GET /v1/files/{file_id}/content`: Download a specific file.
+- **Build the container**
 
-* `DELETE /v1/files/{file_id}`: Delete a file.
-
-```python
-from openai import OpenAI
-
-client = OpenAI(base_url="http://localhost:8080/v1", api_key="")
-with open("/path/to/video.mp4", "rb") as f:
-    uploaded_file = client.files.create(file=f, purpose="vision")
+```bash
+docker compose -f deploy/compose.yaml build
 ```
 
-#### POST /v1/sop/detection
+- **Download Required Model Checkpoints**
 
-This is the primary endpoint for analyzing SOP compliance by sending VLM output to it.
+  This DeepStream-SOP microservice requires users to download the VLM and temporal action detection models. For optimal accuracy, you must retrain/fine-tune the models, which can be done using the SOP Training Blueprint.
 
-* `action_json`: A JSON object defining the SOP steps. It includes an `actions` list and an optional `actions_can_be_skipped` list for "padding" actions that should be ignored during analysis.
+  - **VLM Model**: Use retrained models compatible with [nvidia/Cosmos-Reason1-7B](https://huggingface.co/nvidia/Cosmos-Reason1-7B).
 
+  - **Temporal Action Detection Models**: Use retrained models compatible with DDM-Net. For more information, refer to the [DDM repository](https://github.com/MCG-NJU/DDM).
+
+- **Configure deployment settings**
+
+  Create and configure `deploy/.env` file:
+
+```
+# vim deploy/.env
+
+# Specify the model folder on host, e.g. /opt/models
+# Make sure all the testing models are placed in this folder
+MODEL_ROOT_DIR="/opt/models"
+
+# Specify Cosmos-Reason1-7B Model checkpoint folder
+# It must be under folder $MODEL_ROOT_DIR
+VLLM_MODEL_PATH="/opt/models/cosmos-reason1.1-7b/checkpoint"
+
+# Specify DDM temporal action detection model path
+# It must be under folder $MODEL_ROOT_DIR
+DDM_MODEL_PATH="/opt/models/gbed_models/ddm/checkpoint.pth.tar"
+
+# Specify DDM model input resolution, select from [512, 384, 224], default value: 224
+DS_ACTION_IN_RESOLUTION=224
+
+# Specify DDM model resize interpolation method, select from [nearest, bilinear], default value: nearest
+DS_ACTION_IN_RESIZE_METHOD=nearest
+
+# Specify cache path for vllm. Note that this path should be writable for the user in the microservice.
+# The ddefault value of HOST_CACHE is $HOME/.cache/ds_sop, which might not be writable for the nvds_sop
+# In this case, we can just remove the HOST_CACHE volumes mount in compose.yaml
+# HOST_CACHE=/path/to/writable/by/nvds_sop
+
+# Specify the video subsample framerate for vllm input
+VLM_FPS=8.0
+
+# Optional parameters passed to vllm inference.
+# VLM_MAX_PIXELS=81920
+# VLM_MAX_FRAMES=40
+# VLM_MAX_TOTAL_PIXELS=12688256
+# VLM_RESIZED_HEIGHT=567
+# VLM_RESIZED_WIDTH=1008
+
+# Specify whether to messaging chunk metadata through Kafka, disabled by default
+#ENABLE_MESSAGING=1
+
+# Specify whether to sound alert when a chunk is ready, disabled by default
+# Users need to specify ALERT_SOUND_FILE from host
+#ENABLE_ALERT_SOUND=1
+# Specify a host wav file which will be mount into container's
+# alert file path: /opt/nvidia/nvds_sop/stream/alert.wav
+#ALERT_SOUND_FILE="/host/system/alert.wav"
+
+# Optional: specify the default action config path on the host. The file
+# will be mounted into container's $ACTION_CONFIG_PATH, The file must be JSON format.
+# Check configs/actions.json for example
+#ACTION_CONFIG_PATH=/host/path/to/actions/config.json
+
+
+# Optional: specify the default VLM prompts path on the host. The file
+# will be mounted into container's $VLM_PROMPT_PATH
+# Check configs/vlm_prompts.txt for example
+#VLM_PROMPT_PATH=/host/path/to/configs/vlm_prompts.txt
+
+# Optional: specify the default CAMERA format for Basler devices. default value: RGB
+# supported format up to the camera [RGB, YUY2, UYVY]
+CAMERA_FORMAT=RGB
+
+# Optional: specify GPU memory for the KV cache for performance
+# VLLM_GPU_MEMORY_UTILIZATION=0.6
+
+# Optional: specify max vllm request concurrency  for performance
+# VLLM_MAX_NUM_SEQS=8
+
+# Optional: specify the maximum total token sequence length of vlm
+# VLLM_MAX_MODEL_LEN=50000
+
+# Optional: Enable encoding and saving chunk files. Disabled by default
+# ENCODE_VIDEO=0
+# Optional: Specify host folder for file chunks, it will be mounted into
+# container's /opt/nvidia/nvds_sop/chunks folder for chunks storage
+# If specified, make sure any users have write/delete permission
+# ENCODE_VIDEO_OUTPUT_DIR=/host/chunk/folder"
+
+# Optional: Specify the host folder, it will be mounted into
+# container's /tmp/nvds_sop_storage for file management.
+# If specified, make sure any users have write/delete permission
+# MEDIA_STORAGE_DIR=/host/media/folder
+
+# Optional: specify which user_id to use for debug purpose only, default 1001
+# USER_ID=0
+# Optional: specify which group_id to use for debug purpose only, default 1001
+# GROUP_ID=0
+
+# Optional: for debug purpose only
+# WORK_DIR_PATH="/opt/nvidia/nvds_sop"
+
+# Optional: for debug purpose only
+# PYTHONPATH="/opt/nvidia/nvds_sop"
+
+# Optional: for debug purpose only
+# API_DUMMY_TEST=0
+
+```
+
+### Launch SOP Microservice
+
+- **Launch the microservice**
+
+```
+# Launch microservice
+docker compose -f deploy/compose.yaml up -d
+```
+
+The microservice will launch 2 containers: `nvds-action-sop` and `kafka`.
+
+- **Check microservice status**
+
+```
+# check the last 200 lines of logs
+docker compose -f deploy/compose.yaml logs -f --tail=200 nvds-action-sop
+```
+
+When the server is started, you will see logs like
+```
+...
+INFO:     Started server process [3469]
+INFO:     Waiting for application startup.
+2026-01-16 22:54:34,814 [INFO] [DS_ACTION_DETECTOR.__main__]: Application started
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8300 (Press CTRL+C to quit)
+```
+
+
+- **Shutdown the microservice**
+
+```
+# After all the tests, to shutdown the microservice
+docker compose -f deploy/compose.yaml down
+```
+
+## Kafka Messaging Consumer
+
+When `ENABLE_MESSAGING=1` is enabled in `deploy/.env`, the microservice will publish
+chunk metadata to the Kafka server after each video chunk is processed. This allows
+real-time monitoring and integration with downstream systems.
+
+**Start the Kafka consumer to view messages:**
+```bash
+docker compose -f deploy/compose.yaml exec nvds-action-sop python3 -m nvds_action_detector.messager --consumer
+```
+
+During each `/v1/chat/completions` request, you will see chunk metadata with nvprotobuf schema:
+- Chunk ID and timestamp
+- Video segment information (start/end time)
+- VLM results
+- SOP Checker results
+
+## API Tests
+
+### Run API endpoints unit tests
+
+API schema could be found in Swagger [docs/openapi.json](docs/openapi.json)
+
+Start the unittest for all MS playbook compliance tests
+```
+docker compose -f deploy/compose.yaml exec nvds-action-sop bash -c "TEST_VIDEO_PATH=/path/to/video.mp4 python3 tests/test_api_endpoints.py"
+```
+
+The unittest cover the following endpoints:
+- Health check endpoints:
+  - `GET /v1/live` - Service liveness check
+  - `GET /v1/startup` - Service startup status
+  - `GET /v1/ready` - Service readiness check
+- Model endpoints:
+  - `GET /v1/models` - List available models
+- Metadata endpoint:
+  - `GET /v1/metadata` - Show service metadata and version info
+- Metrics endpoint:
+  - `GET /v1/metrics` - Prometheus metrics for monitoring
+- File management endpoints:
+  - `POST /v1/files` - Upload a file
+  - `GET /v1/files` - List all files
+  - `GET /v1/files/{file_id}/content` - Download file content
+  - `DELETE /v1/files/{file_id}` - Delete a file
+- Chat completion endpoint:
+  - `POST /v1/chat/completions` - Process video with AI model (supports streaming)
+
+
+### Run API tests for video stream & camera
+
+This test suite covers video file, RTSP stream, and Basler camera inputs.
+
+```bash
+# Basic test with video file
+TEST_VIDEO_PATH=/path/to/video.mp4 python3 tests/api_client_test.py
+
+# If running in container
+docker compose -f deploy/compose.yaml exec nvds-action-sop bash -c "TEST_VIDEO_PATH=/path/to/video.mp4 python3 tests/api_client_test.py"
+```
+
+#### Test 1: Video File
+Uses `test_chat_completion_basic()` - sends video file as base64 encoded data.
+
+**Payload example:**
 ```json
 {
-  "actions": [
-      "(1) IDLE",
-      "(2) Action A",
-      "(3) Action B",
-      "(4) Some padding actions that are not a part of the SOP"
-  ],
-  "actions_can_be_skipped": [
-      "(1) IDLE",
-      "(4) Some padding actions that are not a part of the SOP"
-  ]
+  "model": "ds_sop_model",
+  "messages": [{
+    "role": "user",
+    "content": [{
+      "type": "video_url",
+      "video_url": {
+        "url": "data:video/mp4;base64,<base64_encoded_video>"
+      }
+    }]
+  }],
+  "stream": false,
+  "chunking_options": {
+    "algorithm": "ddm-net",
+    "threshold": 0.8,
+    "min_length_sec": 1.0,
+    "max_length_sec": 10.0
+  }
 }
 ```
 
-* `cycle_completion_threshold`, `cycle_boundary_threshold_low`, and `cycle_boundary_threshold_high`: These three parameters control the heuristic used to detect the start of a new SOP cycle when repeated or out-of-order steps are observed.
+#### Test 2: RTSP Live Stream
+Uses `test_video_rtsp_live_streaming()` - processes continuous RTSP video stream.
 
-    For example, if an SOP has 6 steps and the system observes the sequence `[1, 2, 3, 4, 3, 4, 5, 6]`, it needs to decide if the second `3` is a mistake or the start of a new cycle. This is where the thresholds come in.
-
-    The logic has two cases:
-
-    **Case 1: The current cycle is "complete enough"**
-
-    A new cycle is triggered if an action that has already been seen appears again, but only if the current cycle has passed a certain completion percentage.
-
-    * **Controlled by**: `cycle_completion_threshold`
-    * **Example**:
-        * SOP has 6 total steps.
-        * `cycle_completion_threshold` is set to `0.6`.
-        * The threshold for completion is `6 * 0.6 = 3.6` steps.
-        * The observed sequence is `[1, 2, 3, 4, ...]`. The system has seen max step index `4`, which is greater than the threshold of 3.6.
-        * If the next step observed is `3`, i.e., the second `3` in this example, the system declares a new cycle because the completion threshold was met.
-
-    **Case 2: A very early step appears after a very late step**
-
-    A new cycle is triggered if an early-sequence step appears after a late-sequence step has already been completed.
-
-    * **Controlled by**: `cycle_boundary_threshold_low` and `cycle_boundary_threshold_high`.
-    * **Example**:
-        * SOP has 6 total steps.
-        * `cycle_boundary_threshold_low` = `0.4` (anything below step `6 * 0.4 = 2.4` is "low").
-        * `cycle_boundary_threshold_high` = `0.8` (anything above step `6 * 0.8 = 4.8` is "high").
-        * The observed sequence is `[1, 3, 4, 5, ...]`. The highest step seen is `5`, which is above the "high" threshold of 4.8.
-        * If the next step observed is `2` (which is below the "low" threshold of 2.4), the system declares a new SOP cycle.
-
-## Examples & Demo UI 🖥️
-
-### Running Examples
-
-The `tests` directory contains example Python scripts and a Jupyter Notebook to demonstrate the end-to-end flow.
-
-First, install the required packages:
-
-```
-pip install openai opencv-python termcolor requests
+**Setup RTSP stream with VLC:**
+```bash
+# video.mp4 must use H.264/H.265 codec
+cvlc --loop video.mp4 ":sout=#gather:rtp{sdp=rtsp://:8554/file-stream}" \
+    :network-caching=1500 :sout-all :sout-keep
 ```
 
-Run the end-to-end script:
-
-```
-cd tests
-python sop_monitoring_flow.py
+**Environment variable:**
+```bash
+export TEST_RTSP_VIDEO_URL="rtsp://0.0.0.0:8554/file-stream"
 ```
 
-### Reference Web Application
+**Payload example:**
+```json
+{
+  "model": "ds_sop_model",
+  "messages": [{
+    "role": "user",
+    "content": [{
+      "type": "video_url",
+      "video_url": {
+        "url": "rtsp://0.0.0.0:8554/file-stream"
+      }
+    }]
+  }],
+  "stream": true,
+  "chunking_options": {
+    "algorithm": "ddm-net",
+    "threshold": 0.8,
+    "min_length_sec": 1.0,
+    "max_length_sec": 2.0
+  }
+}
+```
 
-An interactive web UI is available for demonstrating the system's capabilities. Access it at:
-`http://<host>:<NGINX_INGRESS_PORT>/sopmon-ui`
+#### Test 3: Basler Camera Live Streaming
+Uses `test_physical_camera_live()` - processes live camera feed from Basler camera.
 
-**Note**: The web UI currently only supports h264 encoded MP4 files. You can convert your video using `ffmpeg`:
+**Setup:**
+- Install Pylon SDK 25.10.2 to get camera serial number via Pylon Viewer
+- Find camera serial number (e.g., "40748152"), supported camera type: a2A2048-37gcPRO
+- Optional: tune a Basler setting and save as `configs/Basler_camera_settings.pfs`, copy into the docker container.
+
+**Environment variables:**
+```bash
+export PHYSICAL_CAMERA_ID="40748152" # camera serial number
+export PHYSICAL_CAMERA_FORMAT="RGB"  # Options: RGB, UYVY, YUY2
+```
+
+**Payload example:**
+```json
+{
+  "model": "ds_sop_model",
+  "messages": [{
+    "role": "user",
+    "content": [{
+      "type": "input_camera",
+      "input_camera": {
+        "camera_id": "40748152",
+        "camera_vendor": "Basler",
+        "camera_format": "RGB",
+        "camera_width": 1280,
+        "camera_height": 720,
+        "camera_fps_num": 30,
+        "camera_fps_den": 1
+      }
+    }]
+  }],
+  "stream": true,
+  "chunking_options": {
+    "algorithm": "ddm-net",
+    "threshold": 0.8,
+    "min_length_sec": 1.0,
+    "max_length_sec": 2.0
+  }
+}
+```
+
+**Note:** For Basler cameras config file, add `"config": "configs/Basler_camera_settings.pfs"` to the `input_camera` object.
+
+**Enable specific tests in code:**
+Uncomment desired tests in `tests/api_client_test.py`:
+```python
+# test_instance.test_basler_camera_streaming_enumeration()
+# test_instance.test_video_rtsp_live_streaming()
+# test_instance.test_physical_camera_live(PHYSICAL_CAMERA_ID, "RGB", timeout_seconds=36)
+```
+
+## Performance Profiling
+
+#### API Client Performance Measurement
+
+For comprehensive performance testing of stream latency and throughput metrics using the `/v1/chat/completions` API endpoint with camera, RTSP, and file inputs, please refer to:
+
+**[API Client Performance Test - Usage Guide](tests/README_perf.md)**
+
+This guide provides detailed instructions for:
+- Running performance tests with different stream types (camera/RTSP/file)
+- Configuring environment variables and test parameters
+- Understanding output metrics (stream startup time, chunk inference time, delays)
+- Using the `StreamClient` class for automated performance measurement
+
+### [Optional] [Developer] Profiling: Run the performance tests for the pipeline
+
+- Running the pipeline for performance profiling
+```
+# update deploy/.env
+vim deploy/.env
+
+# update entrypoint to bash
+ENTRYPOINT="/bin/bash"
+
+# start container and run into terminal
+docker compose -f deploy/compose.yaml up -d
+docker compose -f deploy/compose.yaml attach nvds-action-sop
+
+# make sure you are in the folder of nvds_action_detector
+# check the model exist
+ls $DDM_MODEL_PATH
+ls $VLLM_MODEL_PATH
+
+# start the benchmark test for E2E latency and throughput without API
+# Disable sop checker for performance tests
+DISABLE_SOP_CHECKER=1 python3 -m nvds_action_detector.ds_sop_process --video-path /path/to/test_video_whole_sop_h264.mp4 --batch-size 1
 
 ```
-ffmpeg -i input_video.mp4 -c:v h24 output_video_h264.mp4
+
+- Batch Size 1 is for single-stream, 8/16 for large concurrency.
+
 ```
 
-![Web Showing a summary](./docs/assets/web_showing_summary.jpg)
+# Run batch-size 8 test
+DISABLE_SOP_CHECKER=1 python3 -m nvds_action_detector.ds_sop_process --video-path test_video_whole_sop_h264.mp4 --batch-size 8
+```
 
-## Helper Scripts 🛠️
+## 3rdparty License
+- Refer to `docker/Docker.build` for a complete list of third-party dependencies included in this project.
+- This project will download and install additional third-party open source software projects. Review the
+license terms of these open source projects before use.
+- Building the final container from `docker/Docker.build` requires Basler Pylon SDK, which is subject to separate license terms. Users must independently download and accept the [Pylon SDK license terms](https://docs.baslerweb.com/pylonapi/cpp/licensing) before proceeding. The [Pylon-SDK-25.10](https://www.baslerweb.com/en/downloads/software/1932603569/) can be obtained from the official Basler website after completing the required registration form.
 
-The `scripts/` directory contains helpful utilities for working with the SOP Monitoring system. For detailed information about available scripts and their usage, please refer to the [scripts/README.md](./scripts/README.md).
+## Citation
 
-## Acknowledgments 🙏
+This project utilizes [DDM-Net](https://github.com/MCG-NJU/DDM) for temporal action detection. If you use this DeepStream-SOP system in your research, please acknowledge the DDM-Net contribution by citing:
 
-This project incorporates code from the following open-source repositories:
-
-- **DDM-Net**: [MCG-NJU/DDM](https://github.com/MCG-NJU/DDM) - Generic event boundary detection for action segmentation
-- **HERO Video Feature Extractor**: [linjieli222/HERO_Video_Feature_Extractor](https://github.com/linjieli222/HERO_Video_Feature_Extractor) - Video feature extraction for [UBOCO](https://arxiv.org/abs/2111.14799) algorithms
-
-We thank the authors for their excellent work.
+```bibtex
+@InProceedings{Tang_2022_CVPR,
+    author    = {Tang, Jiaqi and Liu, Zhaoyang and Qian, Chen and Wu, Wayne and Wang, Limin},
+    title     = {Progressive Attention on Multi-Level Dense Difference Maps for Generic Event Boundary Detection},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    month     = {June},
+    year      = {2022},
+    pages     = {3355-3364}
+}
+```

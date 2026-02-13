@@ -15,7 +15,10 @@ import argparse
 import json
 import os
 import re
-from typing import List
+import cv2
+import numpy as np
+from typing import List, Tuple
+from moviepy.editor import VideoFileClip, ImageSequenceClip
 
 
 def create_dir(path: str):
@@ -174,3 +177,67 @@ def custom_sort_key(filename: str, keyword: str, ext: str, sep: str = "_") -> tu
     suffix_number = int(suffix[0]) if suffix else 0
 
     return (action_number, suffix_number)
+
+
+def get_video_meta(video_path: str) -> Tuple[int, float, Tuple[int, int]]:
+    """
+    Get video meta data using MoviePy for robust codec support; fallback to OpenCV if needed.
+
+    Args:
+        video_path (str): path to the video
+
+    Returns:
+        Tuple[int, float, Tuple[int, int]]: frame count, fps, and video size
+
+    Raises:
+        RuntimeError: if the video cannot be opened
+    """
+    # Try MoviePy first
+    try:
+        with VideoFileClip(video_path) as clip:
+            fps = float(clip.fps) if clip.fps else 30.0
+            # Some containers may report nframes as 0; compute from duration as a fallback.
+            duration = float(clip.duration) if clip.duration else 0.0
+            nframes_reader = getattr(getattr(clip, "reader", None), "nframes", 0) or 0
+            frame_count = int(round(duration * fps)) if duration > 0 else int(nframes_reader)
+            size = (int(clip.w), int(clip.h))
+            return frame_count, fps, size
+    except Exception:
+        pass
+
+    # Fallback to OpenCV
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Failed to open video: {video_path}")
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = float(cap.get(cv2.CAP_PROP_FPS)) or 30.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+    return frame_count, fps, (width, height)
+
+
+def write_video(frames: List[np.ndarray], output_path: str, fps: int, size: Tuple[int, int]) -> None:
+    """
+    Write video using MoviePy (libx264). Expects frames in RGB order.
+
+    Args:
+        frames (List[np.ndarray]): frames to be written
+        output_path (str): path to write video
+        fps (int): fps of the video
+        size (Tuple[int, int]): size of the video
+
+    Raises:
+        RuntimeError: if no frames to write
+    """
+    if not frames:
+        raise RuntimeError(f"No frames to write for: {output_path}")
+    w, h = size
+    normalized_frames: List[np.ndarray] = []
+    for f in frames:
+        if (f.shape[1], f.shape[0]) != (w, h):
+            f = cv2.resize(f, (w, h), interpolation=cv2.INTER_AREA)
+        normalized_frames.append(f)
+    clip = ImageSequenceClip(normalized_frames, fps=fps)
+    clip.write_videofile(output_path, fps=fps, codec="libx264", audio=False, verbose=False, logger=None)
+    clip.close()

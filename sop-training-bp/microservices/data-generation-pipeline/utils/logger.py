@@ -105,7 +105,7 @@ def create_file_handler(formatter: logging.Formatter) -> logging.Handler:
             encoding="utf-8",
         )
 
-    except (PermissionError, OSError):
+    except OSError:
         # Fallback to temporary directory if we can't write to the intended location
         import tempfile
 

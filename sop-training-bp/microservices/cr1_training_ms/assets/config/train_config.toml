@@ -38,7 +38,7 @@ validation_batch_per_replica = 1
 
 [policy]
 model_name_or_path = "./assets/weights/Cosmos-Reason1-7B"
-model_max_length = 8192
+model_max_length = 81920
 model_gradient_checkpointing = true
 
 [logging]
@@ -78,6 +78,8 @@ cp_rotate_method = "allgather"
 
 [custom.vision]
 fps=8
-max_pixels=81920
-min_pixels=81920
-max_frames=8
+max_frames=40
+total_pixels=12688256 # 28 * 28 * 8092 * 2, 16k vision token
+
+[custom]
+system_prompt = "Answer the questions."
