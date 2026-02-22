@@ -5,6 +5,7 @@
 - [When To Use Which Blueprint](#when-to-use-which-blueprint)
 - [End-to-End Workflow](#end-to-end-workflow)
 - [Usage](#usage)
+- [Sample Data](#sample-data)
 - [License](#license)
 
 
@@ -42,6 +43,10 @@ These blueprints are designed to work together: train a model with the Training 
 Please refer to:
 - Training: [sop-training-bp/README.md](sop-training-bp/README.md)
 - Inference: [sop-inference-bp/README.md](sop-inference-bp/README.md)
+
+## Sample Data
+We provide [sample data](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/resources/sop-server-fan-installation-data?version=1.0-260213) which can be used for testing the SOP Training and Inference BP.
+The sample data is about installing server fan and power.
 
 ## License
 The software and materials in this repository are governed by the [NVIDIA Software and Model Evaluation License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-software-and-model-evaluation-license/)
