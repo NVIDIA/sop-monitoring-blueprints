@@ -36,3 +36,10 @@ for p in paths_to_remove:
 if MS_PATH in sys.path:
     sys.path.remove(MS_PATH)
 sys.path.insert(0, MS_PATH)
+
+# Add DDM-Net to sys.path so tests can use the same relative imports as
+# train_sop_lightning.py (e.g. `from config.config import ...`)
+DDM_NET_PATH = str(PROJECT_ROOT / "microservices" / "ddm_training_ms" / "ddm" / "DDM-Net")
+if DDM_NET_PATH in sys.path:
+    sys.path.remove(DDM_NET_PATH)
+sys.path.insert(0, DDM_NET_PATH)

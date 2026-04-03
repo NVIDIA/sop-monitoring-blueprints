@@ -1,5 +1,5 @@
 ######################################################################################################
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -39,6 +39,23 @@ dataset_config:
     mode: "train"
     anno_path: /path/to/train/annotation.json
     data_root: /path/to/train/full/videos
+    # Augmentation settings
+    augmentation:
+      RandomResize:
+        enabled: false
+        interpolation: [bilinear, bicubic, nearest]
+        antialias_prob: 0.5
+      ColorJitter:
+        enabled: false
+        brightness: 0.25
+        contrast: 0.3
+        saturation: 0.15
+        hue: 0.02
+      GaussianBlur:
+        enabled: false
+        apply_prob: 0.5
+        kernel_size: 3
+        sigma: [0.1, 0.5]
 
   # Validation data
   val_config:

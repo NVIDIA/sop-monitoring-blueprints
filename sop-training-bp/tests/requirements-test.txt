@@ -21,3 +21,7 @@ toml>=0.10.0
 PyYAML>=6.0
 sqlalchemy>=2.0.0
 asyncpg>=0.29.0
+
+# DDM-Net test dependencies
+omegaconf>=2.3.0
+numpy>=1.26.0

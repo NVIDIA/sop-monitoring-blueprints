@@ -1,5 +1,5 @@
 ######################################################################################################
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -89,11 +89,12 @@ class DecordStreamingReader:
         else:
             self.transform = transforms.Compose([
                 transforms.Resize(self.resolution),
+                transforms.ToDtype(torch.float32, scale=True),
                 transforms.Normalize(mean=DEFAULT_MEAN, std=DEFAULT_STD),
             ])
 
         # num_threads=0 is crucial to prevent interference with DataLoader workers
-        self.vr = VideoReader(path, ctx=cpu(0), width=resolution[1], height=resolution[0], num_threads=0)
+        self.vr = VideoReader(path, ctx=cpu(0), num_threads=0)
         
         self.fps = self.vr.get_avg_fps()
         self.total_frames = len(self.vr)
@@ -120,7 +121,12 @@ class DecordStreamingReader:
             frames = frames.permute(0, 3, 1, 2)
         else:
             raise ValueError(f"Unexpected frames shape: {frames.shape}, expected single frame (H,W,C) or batch (N,H,W,C)")
-        return self.transform(frames / 255.0)
+        if frames.dtype != torch.uint8:
+            raise ValueError(
+                f"Expected uint8 frames from video decoder, got {frames.dtype}. "
+                f"ToDtype(scale=True) requires uint8 input to correctly divide by 255."
+            )
+        return self.transform(frames)
 
     def _fill_buffer(self, frame_indices=None):
         if frame_indices is None:

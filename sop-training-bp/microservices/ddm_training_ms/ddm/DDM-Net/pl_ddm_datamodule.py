@@ -1,5 +1,5 @@
 ######################################################################################################
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -15,9 +15,9 @@
 from typing import Optional
 from torch.utils.data import DataLoader
 import lightning as L
-import torchvision.transforms as T
 from datasets.ddm_dataset import DDMDataset
 from datasets.ddm_val_dataset import DDMValStreamingDataset
+from datasets.default_aug import compose_default_augmentations
 
 
 class DDMDataModule(L.LightningDataModule):
@@ -42,6 +42,8 @@ class DDMDataModule(L.LightningDataModule):
         self.batch_size = dataset_config["batch_size"]
         self.num_workers = dataset_config["workers"]
         self.resolution = dataset_config["resolution"]
+        if isinstance(self.resolution, int):
+            self.resolution = (self.resolution, self.resolution)
         self.dataset = dataset_config["dataset"]
 
 
@@ -53,11 +55,10 @@ class DDMDataModule(L.LightningDataModule):
             stage (str): Stage of the dataset
         """
         if stage == "fit" or stage is None:
-            transform = T.Compose([
-                T.Resize(self.resolution),
-                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ])
             if self.dataset == "DDMDataset":
+
+                training_transform = compose_default_augmentations(self.dataset_config["train_config"].get("augmentation", {}), self.resolution)
+                validation_transform = compose_default_augmentations(self.dataset_config["val_config"].get("augmentation", {}), self.resolution)
                 self.train_dataset = DDMDataset(
                     mode=self.dataset_config["train_config"]["mode"],
                     anno_path=self.dataset_config["train_config"]["anno_path"],
@@ -69,7 +70,7 @@ class DDMDataModule(L.LightningDataModule):
                     min_change_dur=self.dataset_config["min_change_dur"],
                     seed=self.dataset_config["seed"],
                     video_backend=self.dataset_config["video_backend"],
-                    transform=transform,
+                    transform=training_transform,
                 )
                 self.val_dataset = DDMValStreamingDataset(
                     annotation_file=self.dataset_config["val_config"]["anno_path"],
@@ -81,7 +82,7 @@ class DDMDataModule(L.LightningDataModule):
                     chunk_duration=None,
                     resolution=self.resolution,
                     enable_load_balancing=True,
-                    transform=transform,
+                    transform=validation_transform,
                 )
             else:
                 raise NotImplementedError(

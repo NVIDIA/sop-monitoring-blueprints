@@ -92,9 +92,11 @@ def read_random_frames(
         fps = float(clip.fps) if clip.fps else 30.0
         duration = float(clip.duration) if clip.duration else 0.0
         nframes_reader = getattr(getattr(clip, "reader", None), "nframes", 0) or 0
-        frame_count = int(round(duration * fps)) if duration > 0 else int(nframes_reader)
+        # Prefer the actual frame count from ffmpeg reader; fall back to floor(duration * fps)
+        # to avoid overestimating frames (round can exceed the real count).
+        frame_count = int(nframes_reader) if nframes_reader > 0 else int(duration * fps)
         if frame_count <= 0:
-            return []
+            return [], 0
 
         if is_hard:
             num_hard_neg_samples = ceil(frame_count * hard_neg_frames_ratio) # take upperbound
@@ -106,23 +108,28 @@ def read_random_frames(
             elif mode == "end":
                 # pick the last num_hard_negative_samples frames
                 indices = list(range(frame_count - num_hard_neg_samples, frame_count))
-            elif mode == "random":
+            else: # ramdom mode
                 indices = random.sample(range(frame_count), k=num_hard_neg_samples)
             logging.info(f"Hard negative sampling mode: {mode}")
-            logging.info(f"Hard negative sampling indices: {indices}")
         else:
             # random sample for non-hard negative samples
             num_samples = min(num_samples, frame_count)
             indices = random.sample(range(frame_count), k=num_samples)
-            logging.info(f"Non-hard negative sampling indices: {indices}")
 
 
-        for idx in indices:
-            t = idx / fps
-            frame = clip.get_frame(t)  # RGB
-            if (frame.shape[1], frame.shape[0]) != target_size:
-                frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
-            frames.append(frame)
+        # Sort indices so we read frames sequentially — MoviePy uses a
+        # sequential ffmpeg reader, so out-of-order access causes costly
+        # seeks/restarts and can corrupt the internal pipe.
+        sorted_indices = sorted(indices)
+        logging.info(f"Sampled indices: {sorted_indices}")
+
+        for i, frame in enumerate(clip.iter_frames(fps=fps, dtype="uint8")):
+            if i in sorted_indices:
+                if (frame.shape[1], frame.shape[0]) != target_size:
+                    frame = cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
+                frames.append(frame)
+            if len(frames) == len(sorted_indices):
+                break  # early exit once all needed frames are collected
 
     return frames, num_samples
 

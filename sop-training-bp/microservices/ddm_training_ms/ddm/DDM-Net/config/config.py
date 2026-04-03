@@ -417,13 +417,13 @@ def validate_config(config: DictConfig) -> None:
     train_root = dataset_cfg.train_config.get('data_root')
     val_root = dataset_cfg.val_config.get('data_root')
 
-    if not train_anno:
+    if not train_anno or not str(train_anno).strip():
         raise ValueError("Training annotation path not set! Use config or --train-anno-path")
-    if not val_anno:
+    if not val_anno or not str(val_anno).strip():
         raise ValueError("Validation annotation path not set! Use config or --val-anno-path")
-    if not train_root:
+    if not train_root or not str(train_root).strip():
         raise ValueError("Training data root not set! Use config or --dataroot")
-    if not val_root:
+    if not val_root or not str(val_root).strip():
         raise ValueError("Validation data root not set! Use config or --dataroot")
 
 
@@ -437,6 +437,37 @@ def save_config(config: Dict[str, Any], save_path: str) -> None:
     """
     with open(save_path, 'w') as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+
+def _print_augmentation_config(stage_name, aug_cfg):
+    """Print augmentation pipeline summary for a given stage (Train/Val)."""
+    entries = []
+    if aug_cfg.get("RandomResize", {}).get("enabled", False):
+        rr = aug_cfg["RandomResize"]
+        interps = ", ".join(rr.get("interpolation", []))
+        entries.append(f"RandomResize(interpolation=[{interps}], antialias_prob={rr.get('antialias_prob', 0.5)})")
+    else:
+        entries.append("Resize(bilinear)")
+    entries.append("ToDtype(float32)")
+
+    if aug_cfg.get("ColorJitter", {}).get("enabled", False):
+        cj = aug_cfg["ColorJitter"]
+        entries.append(
+            f"ColorJitter(brightness={cj.get('brightness', 0)}, contrast={cj.get('contrast', 0)}, "
+            f"saturation={cj.get('saturation', 0)}, hue={cj.get('hue', 0)})"
+        )
+    if aug_cfg.get("GaussianBlur", {}).get("enabled", False):
+        gb = aug_cfg["GaussianBlur"]
+        entries.append(
+            f"GaussianBlur(p={gb.get('apply_prob', 0.5)}, kernel={gb.get('kernel_size', 3)}, "
+            f"sigma={gb.get('sigma', [0.1, 0.5])})"
+        )
+    entries.append("Normalize(Default)")
+
+    print(f"\n  [{stage_name} Augmentation Pipeline]")
+    for i, entry in enumerate(entries):
+        connector = "└─" if i == len(entries) - 1 else "├─"
+        print(f"    {connector} {entry}")
 
 
 def print_config(config: DictConfig) -> None:
@@ -463,6 +494,9 @@ def print_config(config: DictConfig) -> None:
     print(f"    Train Root: {ds_cfg.train_config.data_root}")
     print(f"    Val Anno:   {ds_cfg.val_config.anno_path}")
     print(f"    Val Root:   {ds_cfg.val_config.data_root}")
+
+    _print_augmentation_config("Train", OmegaConf.to_container(ds_cfg.train_config, resolve=True).get("augmentation", {}))
+    _print_augmentation_config("Val", OmegaConf.to_container(ds_cfg.val_config, resolve=True).get("augmentation", {}))
 
     md_cfg = config.model_config
     print("\n[Model Configuration]")

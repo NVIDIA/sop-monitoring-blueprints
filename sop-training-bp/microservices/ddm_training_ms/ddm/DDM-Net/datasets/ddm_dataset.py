@@ -1,5 +1,5 @@
 ######################################################################################################
-# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
 # NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
@@ -193,8 +193,12 @@ class PyAVVideoDecoder:
                 if return_pil:
                     ordered_pil.append(None)
 
-        # Stack into tensor
         frames_tensor = torch.stack(ordered_frames, dim=0)
+        if frames_tensor.dtype != torch.uint8:
+            raise ValueError(
+                f"Expected uint8 frames from video decoder, got {frames_tensor.dtype}. "
+                f"ToDtype(scale=True) requires uint8 input to correctly divide by 255."
+            )
 
         # Return with .data attribute
         if return_pil:
@@ -238,7 +242,7 @@ class DDMDataset(Dataset):
 
         # Backend selection and availability check
         # If a processor is specified, force 'pyav' backend
-        if processor_name_or_path is not None:
+        if processor_name_or_path and processor_name_or_path != "":
             video_backend = "pyav"
         if video_backend == "torchcodec" and not TORCHCODEC_AVAILABLE:
             raise ImportError("torchcodec is not available. Please install it or use 'pyav' backend.")
@@ -275,6 +279,7 @@ class DDMDataset(Dataset):
         else:
             self.transform = T.Compose([
                 T.Resize(self.resolution),
+                T.ToDtype(torch.float32, scale=True),
                 T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ])
 
@@ -331,7 +336,7 @@ class DDMDataset(Dataset):
                         video_content = vd.get_frames_at(np.arange(vlen), return_pil=bool(self.processor))
 
                     # Normalize and transform video frames
-                    self.video_info[k]["inp"] = self.transform(video_content.data / 255.0)
+                    self.video_info[k]["inp"] = self.transform(video_content.data)
 
                     if self.processor:
                         pil_list = [
@@ -357,7 +362,7 @@ class DDMDataset(Dataset):
             self.video_info[k].update({"fps": fps, "duration": duration, "vlen": vlen})
             boundary_list = []
             # content.pop() # Exclude Final Segment
-            content = [ct for ct in content if ct["description"] != "Final Segment"]
+            content = [ct for ct in content if "final segment" not in ct["description"].lower()]
             for s_sample, e_sample in zip(content[:-1], content[1:]):
                 s_time = s_sample["end_timestamp"]
                 e_time = e_sample["start_timestamp"]
@@ -419,7 +424,7 @@ class DDMDataset(Dataset):
                 else: # pyav
                     decoder = PyAVVideoDecoder(video_path)
                     video_content = decoder.get_frames_at(block_idx, return_pil=bool(self.processor))
-                img = self.transform(video_content.data / 255.0)
+                img = self.transform(video_content.data)
 
                 if self.processor:
                     pil_list = [fetch_image({"image": pil, "resized_height": self.resolution[0], "resized_width": self.resolution[1]}) for pil in video_content.pil]

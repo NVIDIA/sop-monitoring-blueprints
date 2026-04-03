@@ -26,6 +26,23 @@ dataset_config:
     mode: "train"
     anno_path: "/path/to/train/annotation.json"
     data_root: "/path/to/train/full/videos"
+    # Augmentation settings
+    augmentation:
+      RandomResize:
+        enabled: true
+        interpolation: [bilinear, bicubic, nearest]
+        antialias_prob: 0.5
+      ColorJitter:
+        enabled: true
+        brightness: 0.25
+        contrast: 0.3
+        saturation: 0.15
+        hue: 0.02
+      GaussianBlur:
+        enabled: true
+        apply_prob: 0.5
+        kernel_size: 3
+        sigma: [0.1, 0.5]
 
   val_config:
     mode: "val"
@@ -80,6 +97,28 @@ dataset_config:
 > - `anno_path`, `data_root` - Dataset paths
 >   - `anno_path`: Path to annotation JSON file
 >   - `data_root`: Directory containing video files
+
+> **Augmentation Settings:**
+>
+> Augmentation is configured under `train_config.augmentation`. Each block uses `enabled: true/false` to toggle.
+> If no augmentation is configured, the default pipeline is: `Resize → ToDtype(float32) → Normalize`.
+>
+> **Note:** Validation (`val_config`) is not recommended to use augmentation. If needed, you can add an `augmentation` block to `val_config` using the same format as `train_config`.
+>
+> - **`RandomResize`** — Randomly samples interpolation mode per frame during resize.
+>   - `interpolation` — **Must be a list**, even for a single mode (e.g., `[bilinear]`). Recommended: `[bilinear, bicubic, nearest]`. Supported: `bilinear`, `bicubic`, `nearest`, `nearest_exact`.
+>   - `antialias_prob` — Probability of applying antialiasing (0.0–1.0). Default: `0.5`.
+>
+> - **`ColorJitter`** — Randomly adjusts color properties to improve generalization across lighting conditions.
+>   - `brightness` — Max brightness shift. Default: `0.25`.
+>   - `contrast` — Max contrast shift. Default: `0.3`.
+>   - `saturation` — Max saturation shift. Default: `0.15`.
+>   - `hue` — Max hue shift (0.0–0.5). Default: `0.02`. Keep small to avoid unnatural colors.
+>
+> - **`GaussianBlur`** — Randomly applies Gaussian blur.
+>   - `apply_prob` — Probability of applying per sample (0.0–1.0). Default: `0.5`.
+>   - `kernel_size` — **Must be odd** (e.g., `3`, `5`). Default: `3`.
+>   - `sigma` — `[min, max]` range for blur strength. Default: `[0.1, 0.5]`.
 
 ---
 
