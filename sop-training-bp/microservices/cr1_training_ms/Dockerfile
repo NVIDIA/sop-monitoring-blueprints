@@ -77,20 +77,26 @@ ENV PATH="/opt/venv/cosmos_rl/bin:$PATH"
 RUN pip install -U pip psutil==7.1.2 setuptools==79.0.1 wheel==0.45.1
 # even though we don't depend on torchaudio, vllm does. in order to
 # make sure the cuda version matches, we install it here.
-# this pytorch 2.8.0 will be overridden by the vllm installation below (To pytorch 2.9.1). just as a starting point.
+# vllm 0.11.0 pins torch to 2.8.0, which matches this install.
 RUN pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
 
 # 1. Install other dependencies first
+# transformers pinned to 4.x because cosmos-rl (commit b811703) expects the
+# pre-5.x Qwen2.5-VL module layout (model.visual, not model.model.visual).
+# kernels pinned to 0.12.3 — later versions require huggingface_hub>=1.x,
+# which conflicts with transformers 4.x (needs hub<1).
 RUN pip install \
     torchao==0.13.0 \
-    -U vllm --pre --extra-index-url https://wheels.vllm.ai/nightly \
+    vllm==0.11.0 \
+    "transformers<5.0,>=4.55.2" \
+    "kernels==0.12.3" \
     flashinfer-python
 
 # 2. Install Flash Attention via Wheel (This is to control the version of flash attention)
 # using curl -L -O to handle redirects and save file, then install, then delete to save space
-RUN curl -L -O https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl \
-    && pip install flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl \
-    && rm flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+RUN curl -L -O https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl \
+    && pip install flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl \
+    && rm flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
 
 ###################################################
 ## Image target: cosmos_rl
