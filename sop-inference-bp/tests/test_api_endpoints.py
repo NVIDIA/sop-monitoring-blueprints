@@ -541,6 +541,186 @@ class TestChatCompletionEndpoint:
         print_log("✓ Validation errors handled correctly")
 
 
+class TestUniformChunkingEndpoint:
+    """Test chat completion endpoint with uniform chunking algorithm"""
+
+    def test_uniform_chunking_non_streaming(self):
+        """Uniform chunking options are accepted and return a valid non-streaming response"""
+        payload = {
+            "model": "ds_sop_model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Analyze this video"},
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": f"data:video/mp4;base64,{test_video_base64_str}"},
+                        },
+                    ],
+                }
+            ],
+            "stream": False,
+            "chunking_options": {
+                "algorithm": "uniform",
+                "chunk_length_sec": 5.0,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(f"{BASE_URL}/v1/chat/completions", json=payload, headers=headers, timeout=60)
+        assert response.status_code == 200, f"Status: {response.status_code}, Body: {response.text[:500]}"
+        data = response.json()
+        assert data["object"] == "chat.completion"
+        assert data["id"].startswith("chatcmpl-")
+        assert len(data["choices"]) > 0
+        choice = data["choices"][0]
+        assert choice["message"]["role"] == "assistant"
+        assert isinstance(choice["message"]["content"], str)
+        # Verify chunk metadata list is present and each chunk has timing fields
+        metadata_list = choice.get("chunk_metadata_list", [])
+        assert len(metadata_list) > 0, "Expected at least one chunk in chunk_metadata_list"
+        for chunk_meta in metadata_list:
+            assert "start_time" in chunk_meta, "Each chunk must have start_time"
+            assert "end_time" in chunk_meta, "Each chunk must have end_time"
+            assert "chunk_idx" in chunk_meta, "Each chunk must have chunk_idx"
+        print_log(f"✓ Uniform chunking (non-streaming) returned {len(metadata_list)} chunks")
+
+    def test_uniform_chunking_streaming(self):
+        """Uniform chunking options are accepted and return a valid streaming response"""
+        payload = {
+            "model": "ds_sop_model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Analyze this video"},
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": f"data:video/mp4;base64,{test_video_base64_str}"},
+                        },
+                    ],
+                }
+            ],
+            "stream": True,
+            "chunking_options": {
+                "algorithm": "uniform",
+                "chunk_length_sec": 10.0,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(
+            f"{BASE_URL}/v1/chat/completions", json=payload, headers=headers, stream=True, timeout=60
+        )
+        assert response.status_code == 200, f"Status: {response.status_code}, Body: {response.text[:500]}"
+        assert "text/event-stream" in response.headers.get("content-type", "")
+
+        chunks_received = 0
+        for line in response.iter_lines():
+            if not line:
+                continue
+            line = line.decode("utf-8") if isinstance(line, bytes) else line
+            if line == "data: [DONE]":
+                break
+            assert line.startswith("data: "), f"Unexpected SSE line: {line}"
+            event_data = json.loads(line[len("data: "):])
+            assert "choices" in event_data
+            choice = event_data["choices"][0]
+            chunk_meta = choice.get("chunk_metadata", {})
+            assert "start_time" in chunk_meta, "Streaming chunk must have start_time"
+            assert "end_time" in chunk_meta, "Streaming chunk must have end_time"
+            chunks_received += 1
+
+        assert chunks_received > 0, "Expected at least one streaming chunk"
+        print_log(f"✓ Uniform chunking (streaming) received {chunks_received} chunks")
+
+    def test_uniform_chunking_invalid_chunk_length(self):
+        """chunk_length_sec <= 0 is rejected with 422"""
+        payload = {
+            "model": "ds_sop_model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "analyze"},
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": f"data:video/mp4;base64,{test_video_base64_str}"},
+                        },
+                    ],
+                }
+            ],
+            "stream": False,
+            "chunking_options": {
+                "algorithm": "uniform",
+                "chunk_length_sec": -1.0,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(f"{BASE_URL}/v1/chat/completions", json=payload, headers=headers, timeout=10)
+        assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text[:300]}"
+        print_log("✓ Uniform chunking rejects chunk_length_sec <= 0 with 422")
+
+    def test_uniform_chunking_rejects_ddm_extra_fields(self):
+        """Sending DDM-specific fields (threshold) with algorithm='uniform' is rejected with 422"""
+        payload = {
+            "model": "ds_sop_model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "analyze"},
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": f"data:video/mp4;base64,{test_video_base64_str}"},
+                        },
+                    ],
+                }
+            ],
+            "stream": False,
+            "chunking_options": {
+                "algorithm": "uniform",
+                "chunk_length_sec": 5.0,
+                "threshold": 0.9,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(f"{BASE_URL}/v1/chat/completions", json=payload, headers=headers, timeout=10)
+        assert response.status_code == 422, f"Expected 422, got {response.status_code}: {response.text[:300]}"
+        print_log("✓ Uniform chunking rejects extra DDM fields with 422")
+
+    def test_ddm_net_still_works_after_uniform_added(self):
+        """Regression: existing ddm-net algorithm still works correctly"""
+        payload = {
+            "model": "ds_sop_model",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Analyze this video for safety compliance"},
+                        {
+                            "type": "video_url",
+                            "video_url": {"url": f"data:video/mp4;base64,{test_video_base64_str}"},
+                        },
+                    ],
+                }
+            ],
+            "stream": False,
+            "chunking_options": {
+                "algorithm": "ddm-net",
+                "threshold": 0.8,
+                "min_length_sec": 1.0,
+                "max_length_sec": 60.0,
+            },
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(f"{BASE_URL}/v1/chat/completions", json=payload, headers=headers, timeout=60)
+        assert response.status_code == 200, f"Status: {response.status_code}, Body: {response.text[:500]}"
+        data = response.json()
+        assert data["object"] == "chat.completion"
+        assert len(data["choices"]) > 0
+        print_log("✓ ddm-net algorithm still works correctly after uniform chunking added")
+
+
 class TestEdgeCases:
     """Test edge cases and error handling"""
 
@@ -570,6 +750,7 @@ def run_all_tests():
         TestMetadataEndpoint,
         TestFileEndpoints,
         TestChatCompletionEndpoint,
+        TestUniformChunkingEndpoint,
         TestEdgeCases,
         TestMetricsEndpoint,
     ]

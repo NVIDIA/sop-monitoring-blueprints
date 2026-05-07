@@ -51,6 +51,7 @@ from .api_types import (
     HealthSuccessResponse,
     LicenseInfoResponse,
     TextContent,
+    UniformChunkingOptions,
     VideoFileContent,
     VideoURLContent,
 )
@@ -471,11 +472,18 @@ async def ds_sop_generate_chunks(request: ChatCompletionRequest, raw_request: Re
             )
 
         chunking_options = request.chunking_options
-        if isinstance(chunking_options, DdmNetChunkingOptions):
+        if chunking_options.algorithm == "ddm-net":
             chunk_params = ChunkParams(
+                algorithm="ddm-net",
                 min_length_sec=chunking_options.min_length_sec,
                 max_length_sec=chunking_options.max_length_sec,
                 threshold=chunking_options.threshold,
+            )
+        elif chunking_options.algorithm == "uniform":
+            chunk_params = ChunkParams(
+                algorithm="uniform",
+                chunk_length_sec=chunking_options.chunk_length_sec,
+                max_length_sec=chunking_options.chunk_length_sec,
             )
         else:
             chunk_params = ChunkParams(min_length_sec=1, max_length_sec=10, threshold=0.8)

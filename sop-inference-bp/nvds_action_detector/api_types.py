@@ -111,6 +111,16 @@ class DdmNetChunkingOptions(BaseModel):
         return self
 
 
+class UniformChunkingOptions(BaseModel):
+    model_config = {"extra": "forbid"}
+    algorithm: Literal["uniform"] = Field("uniform", description="Algorithm for uniform chunking.")
+    chunk_length_sec: float = Field(
+        5.0,
+        gt=0,
+        description="Length of each chunk in seconds. Default is 5.0 seconds.",
+    )
+
+
 class FileObject(APIBaseModel):
     id: str = Field(..., description="Unique file identifier with prefix 'file-'")
     object: Literal["file"] = Field("file", description="Object type, always 'file'")
@@ -224,7 +234,7 @@ class ChatCompletionMessage(APIBaseModel):
     )
 
 
-ChunkingOptions = Annotated[Union[DdmNetChunkingOptions,], Field(discriminator="algorithm")]
+ChunkingOptions = Annotated[Union[DdmNetChunkingOptions, UniformChunkingOptions], Field(discriminator="algorithm")]
 
 
 class ChatCompletionRequest(APIBaseModel):

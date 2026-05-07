@@ -347,9 +347,10 @@ def create_dummy_pipeline(gpu_id=0):
 def create_inference_pipeline(
     file_path,
     score_queue: Queue,
-    gpu_id: int = 0,
-    frame_queue: Queue = None,
+    gpu_id: Optional[int] = 0,
+    frame_queue: Optional[Queue] = None,
     update_args: Optional[Dict[str, Any]] = None,
+    uniform_chunk: Optional[bool] = False,
     **kwargs,
 ):
     # update the config file with the new prompt if it exists else use
@@ -462,44 +463,41 @@ def create_inference_pipeline(
             "gpu-id": gpu_id,
         },
     )
-    pipeline.add("nvdspreprocess", "preprocess_3d", {"config-file": PREPROCESS_CONFIG, "gpu-id": gpu_id})
-    if USE_TRITON:
-        pipeline.add("nvinferserver", "inferencer", {"config-file-path": INFERENCE_CONFIG})
-    else:
-        pipeline.add("nvinfer", "inferencer", {"config-file-path": INFERENCE_CONFIG, "gpu-id": gpu_id})
-
-    pipeline.add("tee", "tee1")
-    pipeline.add("queue", "queue1")
-    pipeline.add("queue", "queue2")
-    pipeline.add("nvvideoconvert", "convert1", {"nvbuf-memory-type": 2, "gpu-id": gpu_id, "compute-hw": 1})
-    pipeline.add("fakesink", "fakesink", {"sync": False, "qos": False})
-
-    # preprocess_probe = Probe("probe", BufferTemporalOperator(unique_id=0, device=device))
-    # pipeline.attach("queue1", preprocess_probe)
-    # inspector_probe = Probe("probe", TensorInspector())
-    # pipeline.attach("queue2", inspector_probe)
-    meta_probe = Probe("probe", InferenceOutputTensorParser(queue=score_queue))
-    pipeline.attach("queue2", meta_probe)
-    # pipeline.attach("inferencer", meta_probe)
-
-    # pipeline.add("capsfilter", "rgb_capsfilter", {"caps": "video/x-raw(memory:NVMM), format=RGB"})
-
     pipeline.link(("last_src" if is_camera else "srcbin", "mux"), ("", "sink_%u"))
-    logger.info("######## linked decodbin and mux")
-    pipeline.link("mux", "tee1", "queue1", "preprocess_3d", "inferencer", "queue2", "fakesink")
-    logger.info("######## linked mux and tee1, queue1, preprocess_3d, inferencer, queue2, fakesink")
+    logger.info("######## linked source and mux")
+
+    if not uniform_chunk:
+        pipeline.add("tee", "tee1")
+        pipeline.add("queue", "queue1")
+        pipeline.add("queue", "queue2")
+        pipeline.add("nvdspreprocess", "preprocess_3d", {"config-file": PREPROCESS_CONFIG, "gpu-id": gpu_id})
+        if USE_TRITON:
+            pipeline.add("nvinferserver", "inferencer", {"config-file-path": INFERENCE_CONFIG})
+        else:
+            pipeline.add("nvinfer", "inferencer", {"config-file-path": INFERENCE_CONFIG, "gpu-id": gpu_id})
+        pipeline.add("fakesink", "fakesink", {"sync": False, "qos": False})
+        meta_probe = Probe("probe", InferenceOutputTensorParser(queue=score_queue))
+        pipeline.attach("queue2", meta_probe)
+        pipeline.link("mux", "tee1", "queue1", "preprocess_3d", "inferencer", "queue2", "fakesink")
+        logger.info("######## linked mux → tee1 → preprocess_3d → inferencer → fakesink")
+        frame_branch_src = "tee1"
+    else:
+        frame_branch_src = "mux"
+
     if frame_queue is not None or frame_retriever is not None:
         pipeline.add("queue", "queue3")
         pipeline.add("queue", "queue4")
         pipeline.add("nvvideoconvert", "frame_converter", {"nvbuf-memory-type": 2, "gpu-id": gpu_id, "compute-hw": 1})
         pipeline.add("capsfilter", "frame_capsfilter", {"caps": "video/x-raw(memory:NVMM), format=RGB"})
         pipeline.add("appsink", "frame_sink", {"emit-signals": True, "sync": False, "qos": False, "async": True})
-        pipeline.link("tee1", "queue3", "frame_converter", "frame_capsfilter", "queue4", "frame_sink")
+        pipeline.link(frame_branch_src, "queue3", "frame_converter", "frame_capsfilter", "queue4", "frame_sink")
         retriever = frame_retriever if frame_retriever else FrameBufferRetriever(frame_queue)
         pipeline.attach("frame_sink", Receiver("receiver", retriever), tips="new-sample")
-        logger.info(
-            "######## linked mux and tee1, queue1, preprocess_3d, inferencer, queue2, frame_converter, frame_capsfilter, queue4, frame_sink"
-        )
+        logger.info(f"######## linked {frame_branch_src} → frame_converter → frame_capsfilter → frame_sink")
+    elif uniform_chunk:
+        pipeline.add("fakesink", "fakesink", {"sync": False, "qos": False})
+        pipeline.link("mux", "fakesink")
+        logger.info("######## linked mux → fakesink (uniform, no frame retriever)")
 
     return pipeline
 

@@ -119,19 +119,29 @@ class ChunkParams:
     """Parameters for chunk boundary detection and segmentation."""
 
     threshold: float = 0.8
-    """Confidence threshold for detecting action boundaries (0.0-1.0)"""
+    """Confidence threshold for detecting action boundaries (0.0-1.0). Used by ddm-net only."""
 
     min_length_sec: float = 1.0
-    """Minimum chunk length in seconds (chunks shorter than this will be merged)"""
+    """Minimum chunk length in seconds (chunks shorter than this will be merged). Used by ddm-net only."""
 
     max_length_sec: float = 10.0
-    """Maximum chunk length in seconds (chunks longer than this will be split, None for no limit)"""
+    """Maximum chunk length in seconds (chunks longer than this will be split). Used by ddm-net only."""
 
     duration_sec: Optional[float] = None
     """Total video duration in seconds"""
 
     fps: Optional[float] = None
     """Video frame rate"""
+
+    chunk_length_sec: Optional[float] = None
+    """Fixed chunk length in seconds. Must be set when algorithm == 'uniform'."""
+
+    algorithm: str = "ddm-net"
+    """Chunking algorithm: 'ddm-net' for DDM boundary detection, 'uniform' for fixed-length chunks."""
+
+    def __post_init__(self):
+        if self.algorithm == "uniform" and self.chunk_length_sec is None:
+            raise ValueError("chunk_length_sec must be set when algorithm == 'uniform'")
 
 
 def chunk_info_func(chunk: Dict[str, Any]) -> str:
@@ -513,6 +523,7 @@ class SOPVideoProcessor:
                     self._gpu_id,
                     frame_retriever=self._decoded_frame_retriever,
                     update_args=update_args,
+                    uniform_chunk=(self._chunk_params.algorithm == "uniform"),
                     **kwargs,
                 )
                 tm.log_elapsed_time("inference pipeline creation")
@@ -597,7 +608,12 @@ class SOPVideoProcessor:
         logger.info(f"SOPVideoProcessor {self._id} starting")
         loop = asyncio.get_running_loop()
         self._pipeline_thread_future = submit_in_executor(self._cv_process_pool, self.run_pipeline)
-        self._clip_process_future = submit_in_executor(self._clip_process_pool, self.clip_post_process)
+        clip_fn = (
+            self.uniform_clip_post_process
+            if self._chunk_params.algorithm == "uniform"
+            else self.clip_post_process
+        )
+        self._clip_process_future = submit_in_executor(self._clip_process_pool, clip_fn)
         self._post_dispatch_future = submit_in_executor(self._post_dispatch_thread_pool, self.post_dispatch_process)
         if not DISABLE_VLM_INFERENCE:
             await self._start_vlm(loop)
@@ -806,6 +822,63 @@ class SOPVideoProcessor:
             self._decoded_frame_retriever.set_end_of_stream()
         tm.log_elapsed_time(f"SOPVIdeoProcessor: {self.id} DeepStream inference pipeline stopped.")
 
+    def _make_chunk_info(self, chunk_idx, start_time, end_time, cv_boundary_score, cv_execute_time):
+        return {
+            "chunk_idx": chunk_idx,
+            "start_time": start_time,
+            "end_time": end_time,
+            "cv_boundary_score": cv_boundary_score,
+            "cv_execute_time": cv_execute_time,
+            "first_timestamp": self.first_timestamp,
+            "pipeline_starting_timestamp": self._tm_e2e.start_time,
+            "pipeline_cv_ready_timestamp": self._tm_e2e.now(),
+        }
+
+    def uniform_clip_post_process(self):
+        """Generate uniform fixed-length chunk boundaries without DDM inference.
+
+        Emits one chunk at a time as decoded frames arrive, so file and live inputs
+        share the same path. This gives natural backpressure (no flooding the
+        chunk queue) and a clean exit when EOS arrives early due to cancellation
+        or pipeline error.
+        """
+        self._started_event.wait()
+        tm = TimeMeasure("uniform_clip_post_process")
+        logger.info("uniform_clip_post_process started")
+        self.first_timestamp = self._tm_e2e.now()
+        chunk_length_sec = self._chunk_params.chunk_length_sec
+
+        retriever = self._decoded_frame_retriever
+        chunk_idx, clip_start = 0, None
+        while True:
+            retriever.wait_for_new_frame()
+            last_ts = retriever.last_timestamp()
+            is_eos = retriever.is_end_of_stream()
+            if clip_start is None:
+                clip_start = last_ts
+            # Drain all complete chunks accumulated since the last wake-up.
+            while last_ts >= clip_start + chunk_length_sec:
+                end = clip_start + chunk_length_sec
+                self._chunk_queue.put(
+                    self._make_chunk_info(chunk_idx, clip_start, end, 1.0, tm.elapsed_time)
+                )
+                chunk_idx += 1
+                clip_start = end
+                tm.reset()
+            if is_eos:
+                # Emit final partial chunk for the trailing remainder.
+                if last_ts > clip_start:
+                    self._chunk_queue.put(
+                        self._make_chunk_info(chunk_idx, clip_start, last_ts, 1.0, tm.elapsed_time)
+                    )
+                break
+        # drain pipeline EOS sentinel(s)
+        while self._boundary_queue.get(block=True) is not None:
+            pass
+
+        self._chunk_queue.put(None)
+        logger.info(f"SOPVideoProcessor: {self.id} uniform_clip_post_process done")
+
     def clip_post_process(self):
         self._started_event.wait()
         # items = []
@@ -858,16 +931,7 @@ class SOPVideoProcessor:
                 logger.debug(f"calculate_next_chunk_boundary: {end}")
                 if end is not None:
                     tm.log_elapsed_time(f"calculated next chunk clip {self._clip_start_sec:.3f} - {end:.3f} video ")
-                    chunk_info = {
-                        "chunk_idx": chunk_idx,
-                        "start_time": self._clip_start_sec,
-                        "end_time": end,
-                        "cv_boundary_score": score,  # this is the score of end_time boundary score
-                        "cv_execute_time": tm.elapsed_time,
-                        "first_timestamp": self.first_timestamp,
-                        "pipeline_starting_timestamp": self._tm_e2e.start_time,
-                        "pipeline_cv_ready_timestamp": self._tm_e2e.now(),
-                    }
+                    chunk_info = self._make_chunk_info(chunk_idx, self._clip_start_sec, end, score, tm.elapsed_time)
                     chunk_idx += 1
                     self._chunk_queue.put(chunk_info)
                     self._clip_start_sec = end
@@ -1211,7 +1275,37 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size for the action detection")
     parser.add_argument("--camera-serial-number", type=str, default=None, help="Camera serial number")
     parser.add_argument("--camera-config", type=str, default=None, help="Camera configuration path")
-    parser.add_argument("--vlm-model-path", type=str, default=None, help="Path to the VLM model")
+    parser.add_argument(
+        "--chunking",
+        type=str,
+        default="ddm-net",
+        choices=["ddm-net", "uniform"],
+        help="Chunking algorithm: 'ddm-net' (default) or 'uniform'",
+    )
+    parser.add_argument(
+        "--chunk-length-sec",
+        type=float,
+        default=10.0,
+        help="Chunk length in seconds, used when --chunking=uniform (default: 10.0)",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.8,
+        help="Boundary detection threshold, used when --chunking=ddm-net (default: 0.8)",
+    )
+    parser.add_argument(
+        "--min-length-sec",
+        type=float,
+        default=1.0,
+        help="Minimum chunk length in seconds, used when --chunking=ddm-net (default: 1.0)",
+    )
+    parser.add_argument(
+        "--max-length-sec",
+        type=float,
+        default=10.0,
+        help="Maximum chunk length in seconds, used when --chunking=ddm-net (default: 10.0)",
+    )
     args = parser.parse_args()
 
     model_time = TimeMeasure("Model Initialization")
@@ -1256,7 +1350,19 @@ if __name__ == "__main__":
     logger.info(f"######## model initialized in {model_time.elapsed_time:.3f}s")
 
     logger.info(f"######## video_duration: {video_duration:.3f}s, video_fps: {video_fps:.3f}")
-    chunk_params = ChunkParams(min_length_sec=1, max_length_sec=10, threshold=0.8)
+    if args.chunking == "uniform":
+        chunk_params = ChunkParams(
+            algorithm="uniform",
+            chunk_length_sec=args.chunk_length_sec,
+            max_length_sec=args.chunk_length_sec,
+        )
+    else:
+        chunk_params = ChunkParams(
+            algorithm="ddm-net",
+            threshold=args.threshold,
+            min_length_sec=args.min_length_sec,
+            max_length_sec=args.max_length_sec,
+        )
     sop_video_processors = [
         sop_manager.create_video_processor(
             video_path,
