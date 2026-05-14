@@ -1,0 +1,101 @@
+[
+  {
+    "chunk": "chunk #1",
+    "idx": 1,
+    "action": 10,
+    "description": "step 10: doing action not belong to the defined SOP.",
+    "start_timestamp": 0.0,
+    "end_timestamp": 5.5388722055388735,
+    "chunk_name": "10_Install_11_1_1.mp4"
+  },
+  {
+    "chunk": "chunk #2",
+    "idx": 1,
+    "action": 1,
+    "description": "step 1: installing the first fan by connecting the connector and then pressing the fan in place.",
+    "start_timestamp": 5.5388722055388735,
+    "end_timestamp": 14.38104771438105,
+    "chunk_name": "01_Install_11_1_2.mp4"
+  },
+  {
+    "chunk": "chunk #3",
+    "idx": 1,
+    "action": 2,
+    "description": "step 2: installing the second fan by connecting the connector and then pressing the fan in place.",
+    "start_timestamp": 14.38104771438105,
+    "end_timestamp": 22.35568902235569,
+    "chunk_name": "02_Install_11_1_3.mp4"
+  },
+  {
+    "chunk": "chunk #4",
+    "idx": 1,
+    "action": 3,
+    "description": "step 3: installing the third fan by connecting the connector and then pressing the fan in place.",
+    "start_timestamp": 22.35568902235569,
+    "end_timestamp": 31.031031031031038,
+    "chunk_name": "03_Install_11_1_4.mp4"
+  },
+  {
+    "chunk": "chunk #5",
+    "idx": 1,
+    "action": 4,
+    "description": "step 4: installing the forth fan by connecting the connector and then pressing the fan in place.",
+    "start_timestamp": 31.031031031031038,
+    "end_timestamp": 43.51017684351018,
+    "chunk_name": "04_Install_11_1_5.mp4"
+  },
+  {
+    "chunk": "chunk #6",
+    "idx": 1,
+    "action": 5,
+    "description": "step 5: installing the fifth fan by connecting the connector and then pressing the fan in place.",
+    "start_timestamp": 43.51017684351018,
+    "end_timestamp": 50.11678345011679,
+    "chunk_name": "05_Install_11_1_6.mp4"
+  },
+  {
+    "chunk": "chunk #7",
+    "idx": 1,
+    "action": 6,
+    "description": "step 6: installing the sixth fan by connecting the connector and then pressing the fan in place.",
+    "start_timestamp": 50.11678345011679,
+    "end_timestamp": 61.66166166166167,
+    "chunk_name": "06_Install_11_1_7.mp4"
+  },
+  {
+    "chunk": "chunk #8",
+    "idx": 1,
+    "action": 7,
+    "description": "step 7: installing the first Power Supply by placing the power supply in its compartment and then firmly pressing it in its place until the latch clicks.",
+    "start_timestamp": 61.66166166166167,
+    "end_timestamp": 71.47147147147147,
+    "chunk_name": "07_Install_11_1_8.mp4"
+  },
+  {
+    "chunk": "chunk #9",
+    "idx": 1,
+    "action": 8,
+    "description": "step 8: installing the second Power Supply by placing the power supply in its compartment and then firmly pressing it in its place until the latch clicks.",
+    "start_timestamp": 71.47147147147147,
+    "end_timestamp": 78.01134467801135,
+    "chunk_name": "08_Install_11_1_9.mp4"
+  },
+  {
+    "chunk": "chunk #10",
+    "idx": 1,
+    "action": 9,
+    "description": "step 9: installing the server cover by placing it in its shown location on top of the server and then presses the black latch to lock the cover in place.",
+    "start_timestamp": 78.01134467801135,
+    "end_timestamp": 86.11945278611947,
+    "chunk_name": "09_Install_11_1_10.mp4"
+  },
+  {
+    "chunk": "chunk #11",
+    "idx": 2,
+    "action": 10,
+    "description": "step 10: doing action not belong to the defined SOP.",
+    "start_timestamp": 86.11945278611947,
+    "end_timestamp": 98.7987987987988,
+    "chunk_name": "10_Install_11_2_11.mp4"
+  }
+]
