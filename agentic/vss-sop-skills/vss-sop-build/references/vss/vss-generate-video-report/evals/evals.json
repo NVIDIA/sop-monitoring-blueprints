@@ -1,0 +1,65 @@
+{
+  "skill_name": "vss-generate-video-report",
+  "evals": [
+    {
+      "id": 1,
+      "name": "Check standard execution",
+      "prompt": "Run the standard flow for vss-generate-video-report",
+      "expected_output": "The skill runs the standard flow for vss-generate-video-report successfully and produces expected outputs.",
+      "assertions": [
+        {
+          "type": "contains",
+          "text": "report"
+        },
+        {
+          "type": "contains",
+          "text": "video"
+        },
+        {
+          "type": "not_contains_pattern",
+          "text": "password|credential|token|secret"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Check custom options and parameters",
+      "prompt": "Run vss-generate-video-report with custom parameters and options",
+      "expected_output": "The skill applies the custom parameters and executes the vss-generate-video-report workflow accordingly.",
+      "assertions": [
+        {
+          "type": "contains",
+          "text": "incident"
+        },
+        {
+          "type": "contains",
+          "text": "vss"
+        },
+        {
+          "type": "not_contains_pattern",
+          "text": "password|credential|token|secret"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Check error/invalid input negative case",
+      "prompt": "Run vss-generate-video-report with invalid input parameters to trigger expected error handling",
+      "expected_output": "The skill gracefully rejects the invalid input or reports a clear error message.",
+      "assertions": [
+        {
+          "type": "contains",
+          "text": "error"
+        },
+        {
+          "type": "contains",
+          "text": "invalid"
+        },
+        {
+          "type": "not_contains_pattern",
+          "text": "password|credential|token|secret"
+        }
+      ]
+    }
+  ]
+}

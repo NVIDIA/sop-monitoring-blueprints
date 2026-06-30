@@ -1,0 +1,7 @@
+Confusion group: lower_tubes
+Shared context: tube removal from the lower chassis
+Action A (index 2): Remove bottom tube from lower chassis
+Action B (index 3): Remove upper tube from lower chassis
+Spatial dimension: bottom vs upper position within the lower chassis
+
+Generate 3 question-answer pairs for when Action A (index 2) is the ground truth.

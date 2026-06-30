@@ -1,0 +1,16 @@
+{
+  "name": "vss-sop",
+  "version": "1.0.0",
+  "description": "VSS SOP (Video Search & Summarization — Standard Operating Procedure) blueprint life-cycle skills: orchestrate, build, deploy, and test the VSS SOP blueprint on top of VSS 3.1 with GPU-accelerated DeepStream SOP inference, ELK pipeline, VIOS/VST recording, and VSS agent compliance auditing.",
+  "author": {
+    "name": "NVIDIA",
+    "email": "info@nvidia.com"
+  },
+  "license": "Apache-2.0",
+  "skills": [
+    "./sop-build",
+    "./vss-sop-build",
+    "./vss-sop-deploy",
+    "./vss-sop-test"
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "name": "sop-agentic-ft",
+  "owner": {
+    "name": "Metropolis TW Team"
+  },
+  "metadata": {
+    "description": "SOP monitoring skill marketplace",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins",
+    "license": "CC-BY-4.0 AND Apache-2.0"
+  },
+  "plugins": [
+    {
+      "name": "sop-rca-plugin",
+      "source": "./plugins/sop-rca-plugin",
+      "description": "Root cause analysis for SOP monitoring pipeline failures. Analyzes end-to-end evaluation logs, DDM temporal segmentation, VLM action recognition, training data, and fine-tuning configs to identify failure patterns and produce actionable improvement recommendations.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Metropolis TW Team"
+      },
+      "category": "analysis",
+      "tags": [
+        "sop",
+        "rca",
+        "failure-analysis",
+        "ddm",
+        "vlm",
+        "evaluation",
+        "training"
+      ]
+    },
+    {
+      "name": "sop-cr-finetuning-plugin",
+      "source": "./plugins/sop-cr-finetuning-plugin",
+      "description": "Fine-tune Cosmos-Reason2 (CR2) VLM for SOP monitoring with config preparation and real-time training monitoring",
+      "version": "1.0.0",
+      "author": {
+        "name": "Metropolis TW Team"
+      },
+      "category": "training",
+      "tags": [
+        "sop",
+        "cr2",
+        "vlm",
+        "finetuning",
+        "cosmos-reason"
+      ]
+    },
+    {
+      "name": "sop-ddm-finetuning-plugin",
+      "source": "./plugins/sop-ddm-finetuning-plugin",
+      "description": "Fine-tune DDM-Net temporal boundary detector for SOP monitoring with pre-flight validation and real-time training monitoring",
+      "version": "1.0.0",
+      "author": {
+        "name": "Metropolis TW Team"
+      },
+      "category": "training",
+      "tags": [
+        "sop",
+        "ddm",
+        "temporal-boundary",
+        "finetuning",
+        "resnet"
+      ]
+    },
+    {
+      "name": "sop-data-augmentation-plugin",
+      "source": "./plugins/sop-data-augmentation-plugin",
+      "description": "Configure, trigger, monitor, and troubleshoot the SOP data and QA augmentation pipeline. Transforms annotated video data into 7 types of structured QA formats (BCQ, MCQ, GQA, DMCQ, DSQA, ENQA) for VLM training.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Metropolis TW Team"
+      },
+      "category": "augmentation",
+      "tags": [
+        "sop",
+        "data-augmentation",
+        "vlm",
+        "qa-generation",
+        "training-data",
+        "vllm"
+      ]
+    },
+    {
+      "name": "sop-evaluation-plugin",
+      "source": "./plugins/sop-evaluation-plugin",
+      "description": "Run SOP evaluation pipelines via the BP evaluation-ms HTTP API: end-to-end inference (temporal segmentation + action recognition + accuracy) and by-action VLM evaluation (per-action-clip inference + accuracy metrics).",
+      "version": "1.0.0",
+      "author": {
+        "name": "Metropolis TW Team"
+      },
+      "category": "evaluation",
+      "tags": [
+        "sop",
+        "evaluation",
+        "vlm",
+        "action-recognition",
+        "temporal-segmentation",
+        "ddm"
+      ]
+    },
+    {
+      "name": "sop-ft-orchestrate-plugin",
+      "source": "./plugins/sop-ft-orchestrate-plugin",
+      "description": "Autonomous orchestrator for the full SOP fine-tuning pipeline: from annotated dataset to production-ready DDM + VLM models. Runs the complete Import → Augment → DDM Train → VLM Train → Evaluate → RCA loop, interprets RCA results, applies fixes, and iterates until success criteria are met.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Metropolis TW Team"
+      },
+      "category": "orchestration",
+      "tags": [
+        "sop",
+        "orchestration",
+        "finetuning",
+        "ddm",
+        "vlm",
+        "pipeline",
+        "automation"
+      ]
+    }
+  ]
+}

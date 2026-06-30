@@ -1,0 +1,7 @@
+# Step 1 — `agents/compose.yml` after commenting out the unused
+# ai-agents includes (SOP doesn't deploy them).
+include:
+  # - path: ai-agents/ai-agents.yml
+  # - path: ai-agents/nim.yml
+  - path: vss-agent/vss-agent-docker-compose.yml
+  - path: agent_ui/compose.yml

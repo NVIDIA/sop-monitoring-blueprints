@@ -1,0 +1,8 @@
+# Step 2b — Add these three SOP patch bind-mounts to `vss-va-mcp.volumes`.
+# Paths must be byte-perfect: any drift in the python3.13 site-packages path
+# (e.g., wrong Python minor version) silently disables the patch.
+volumes:
+  - ${MDX_SAMPLE_APPS_DIR}:/vss-agent/deployments:ro
+  - ${MDX_SAMPLE_APPS_DIR}/sop/vss-agent/patches/tools.py:/vss-agent/.venv/lib/python3.13/site-packages/vss_agents/video_analytics/tools.py:ro
+  - ${MDX_SAMPLE_APPS_DIR}/sop/vss-agent/patches/utils.py:/vss-agent/.venv/lib/python3.13/site-packages/vss_agents/video_analytics/utils.py:ro
+  - ${MDX_SAMPLE_APPS_DIR}/sop/vss-agent/patches/es_client.py:/vss-agent/.venv/lib/python3.13/site-packages/vss_agents/video_analytics/es_client.py:ro

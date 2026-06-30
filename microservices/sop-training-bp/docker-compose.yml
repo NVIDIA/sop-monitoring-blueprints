@@ -1,0 +1,225 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+######################################################################################################
+
+version: '3.8'
+
+services:
+  # Data Generation Microservice
+  sop-data-gen:
+    image: ${SOP_DATA_GEN_IMAGE:-sop-data-generation:latest}
+    build:
+      context: ./microservices/data-generation-pipeline
+      dockerfile: Dockerfile
+    ports:
+      - "${AUGMENTATION_BACKEND_PORT:-5487}:${AUGMENTATION_BACKEND_PORT:-5487}"
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/assets/data"
+      - "${LOG_FILE_ROOT:-logs}:/workspace/assets/logs"
+    environment:
+      - SERVICE_PORT=${AUGMENTATION_BACKEND_PORT:-5487}
+      - NGC_API_KEY=${NGC_API_KEY:-${NGC_PERSONAL_KEY:-}}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-sop_db}
+      - POSTGRES_HOST=${POSTGRES_HOST:-metadata_db}
+    restart: unless-stopped
+    ipc: host
+    networks:
+      - sop-network
+    depends_on:
+      - annotation-backend
+      - metadata_db
+
+  cosmos-reason-microservice:
+    image: ${VLM_IMAGE:-cr_ftms:latest}
+    build:
+      context: ./microservices/cr-training-ms
+      dockerfile: Dockerfile
+    ports:
+      - "${VLM_TRAINING_BACKEND_PORT:-32080}:${VLM_TRAINING_BACKEND_PORT:-32080}"
+    environment:
+      - SERVICE_PORT=${VLM_TRAINING_BACKEND_PORT:-32080}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-sop_db}
+      - POSTGRES_HOST=${POSTGRES_HOST:-metadata_db}
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/sop-cr-ftms/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/sop-cr-ftms/assets/data"
+      - "${PRETRAINED_MODEL_ROOT:-pretrained_weights}:/workspace/sop-cr-ftms/assets/weights"
+      - "${RESULTS_ROOT:-results}:/workspace/sop-cr-ftms/assets/results"
+      - "${TOOL_PATH:-tools}:/workspace/sop-cr-ftms/assets/tools"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    restart: unless-stopped
+    networks:
+      - sop-network
+    depends_on:
+      - sop-data-gen
+      - metadata_db
+
+  ddm-training-microservice:
+    image: ${DDM_IMAGE:-ddm_ftms:latest}
+    build:
+      context: ./microservices/ddm-training-ms
+      dockerfile: Dockerfile
+    ports:
+      - "${DDM_TRAINING_BACKEND_PORT:-32100}:${DDM_TRAINING_BACKEND_PORT:-32100}"
+    environment:
+      - SERVICE_PORT=${DDM_TRAINING_BACKEND_PORT:-32100}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-sop_db}
+      - POSTGRES_HOST=${POSTGRES_HOST:-metadata_db}
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/sop-ddm-ftms/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/sop-ddm-ftms/assets/data"
+      - "${PRETRAINED_MODEL_ROOT:-pretrained_weights}:/workspace/sop-ddm-ftms/assets/weights"
+      - "${RESULTS_ROOT:-results}:/workspace/sop-ddm-ftms/assets/results"
+      - "${TOOL_PATH:-tools}:/workspace/sop-ddm-ftms/assets/tools"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    restart: unless-stopped
+    networks:
+      - sop-network
+    depends_on:
+      - sop-data-gen
+      - metadata_db
+
+  evaluation-microservice:
+    image: ${EVAL_IMAGE:-eval_ms:latest}
+    build:
+      context: ./microservices/evaluation-ms
+      dockerfile: Dockerfile
+    ports:
+      - "${EVAL_BACKEND_PORT:-32090}:${EVAL_BACKEND_PORT:-32090}"
+    environment:
+      - SERVICE_PORT=${EVAL_BACKEND_PORT:-32090}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-sop_db}
+      - POSTGRES_HOST=${POSTGRES_HOST:-metadata_db}
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/sop-eval-ms/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/sop-eval-ms/assets/data"
+      - "${PRETRAINED_MODEL_ROOT:-pretrained_weights}:/workspace/sop-eval-ms/assets/weights"
+      - "${RESULTS_ROOT:-results}:/workspace/sop-eval-ms/assets/results"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    restart: unless-stopped
+    networks:
+      - sop-network
+    depends_on:
+      - metadata_db
+
+  annotation-backend:
+    image: ${ANNOTATION_BACKEND_IMAGE:-sop-annotation-backend:latest}
+    build:
+      context: ./microservices/video-annotator-ms/annotation_backend
+      dockerfile: Dockerfile
+    container_name: sop-annotation-backend
+    ports:
+      - "${ANNOTATION_BACKEND_PORT:-8100}:${ANNOTATION_BACKEND_PORT:-8100}"
+    environment:
+      - SERVICE_PORT=${ANNOTATION_BACKEND_PORT:-8100}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-sop_db}
+      - POSTGRES_HOST=${POSTGRES_HOST:-metadata_db}
+    volumes:
+      - "${CONFIG_DIR:-config}:/app/assets/config"
+      - ${DATASET_ROOT:-data}:/app/assets/videos
+      - ${LOG_FILE_PATH:-logs}:/app/assets/logs
+    networks:
+      - sop-network
+    restart: unless-stopped
+    depends_on:
+      - metadata_db
+
+  annotation-frontend:
+    image: ${ANNOTATION_FRONTEND_IMAGE:-sop-annotation-frontend:latest}
+    build:
+      context: ./microservices/video-annotator-ms/annotation_frontend
+      dockerfile: Dockerfile
+    container_name: sop-annotation-frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:${FRONTEND_PORT:-80}"
+    networks:
+      - sop-network
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      - annotation-backend
+
+  metadata_db:
+    image: postgres:17.2
+    shm_size: 256mb
+    volumes:
+      - ${POSTGRES_DB_ROOT:-postgres_db}:/var/lib/postgresql/data
+      - ./db-init-scripts/01-init-tables.sql:/docker-entrypoint-initdb.d/01-init-tables.sql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sop_db}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-64MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-4MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+    restart: always
+    networks:
+      - sop-network
+
+  adminer:
+    image: adminer
+    ports:
+      - 8080:8080
+    restart: always
+    networks:
+      - sop-network
+
+
+networks:
+  sop-network:
+    driver: bridge
+
+volumes:
+  config:
+  data:
+  pretrained_weights:
+  results:
+  logs:
+  postgres_db:
+  tools:

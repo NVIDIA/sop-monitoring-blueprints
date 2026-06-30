@@ -1,0 +1,70 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+######################################################################################################
+
+version: '3.8'
+
+services:
+  cosmos-reason-microservice:
+    image: ${VLM_IMAGE:-cr_ftms:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${VLM_PORT:-32080}:${VLM_PORT:-32080}"
+    volumes:
+      - "${CONFIG_DIR:-config}:/workspace/sop-cr-ftms/assets/config"
+      - "${DATASET_ROOT:-data}:/workspace/sop-cr-ftms/assets/data"
+      - "${PRETRAINED_MODEL_ROOT:-pretrained_weights}:/workspace/sop-cr-ftms/assets/weights"
+      - "${RESULTS_ROOT:-results}:/workspace/sop-cr-ftms/assets/results"
+      - "${TOOL_PATH:-tools}:/workspace/sop-cr-ftms/assets/tools"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ipc: host
+    restart: unless-stopped
+  metadata_db:
+    image: postgres:17.2
+    shm_size: 256mb # set shared memory limit when using docker compose
+    volumes:
+      - ${POSTGRES_DB_ROOT:-postgres_db}:/var/lib/postgresql/data
+      - ./db-init-scripts/01-init-tables.sql:/docker-entrypoint-initdb.d/01-init-tables.sql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sop_db}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-64MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-4MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+    restart: always
+
+  adminer:
+    image: adminer
+    ports:
+      - 8080:8080
+    restart: always
+
+volumes:
+  config:
+  data:
+  pretrained_weights:
+  results:
+  tools:
+  postgres_db:

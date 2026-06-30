@@ -1,0 +1,70 @@
+######################################################################
+# E2E Evaluation Inputs Template (API-driven)
+# Used by the orchestrator (Step 7b) to generate inputs_e2e_iter<N>.yaml
+# each iteration. Fill in placeholders from run_state.yaml. Submitted to
+# the BP evaluation-ms HTTP API via the /sop-e2e-inference skill — no Docker
+# mount or sop-inference-bp path.
+#
+# Placeholder reference (all from run_state.yaml):
+#   <training_job_id>      → run_state.training_job_id
+#   <val_dataset_id>       → run_state.val_dataset_id
+#   <ddm_training_job_id>  → run_state.ddm_training_job_id
+#   <host_results_root>    → run_state.host_results_root
+#   <ddm_threshold>        → run_state.ddm_threshold (tune down if missing
+#                            actions: 0.6 → 0.4 → 0.15; never tune for
+#                            DUPLICATE — that is a VLM issue)
+#   <fps>                  → train_config.toml [custom.vision].fps
+#   <max_frames>           → train_config.toml [custom.vision].max_frames
+#   <total_pixels>         → train_config.toml [custom.vision].total_pixels
+######################################################################
+
+# === Required ========================================================
+training_job_id: <training_job_id>
+val_dataset_id: <val_dataset_id>
+ddm_training_job_id: <ddm_training_job_id>
+host_results_root: <host_results_root>
+
+# === Eval-ms endpoint ================================================
+eval_host: localhost
+eval_port: 32090
+
+# === Chunking ========================================================
+# Always 'ddm' in orchestrated runs — we want DDM-driven segmentation
+# evaluated end-to-end. Switch to 'uniform' + chunk_length_sec only for
+# ablation iterations the user explicitly requests.
+chunking_algorithm: ddm
+chunk_length_sec:               # null unless chunking_algorithm=uniform
+
+# === DDM (Temporal Segmentation) =====================================
+# score_threshold: boundary score cutoff. Default 0.5 (eval-ms default).
+# Orchestrator may tune down for MISSING actions; never up for duplicates.
+score_threshold: <ddm_threshold>
+nms_sec: 0.0
+ddm_batch_size: 8
+frames_per_segment_hint: 256
+
+# Pin a specific DDM checkpoint; null = latest under ddm_training_job_id.
+ddm_checkpoint:
+
+# === VLM (Action Recognition) ========================================
+# These MUST match train_config.toml [custom.vision].
+backend: vllm                   # transformers for LoRA evals (see by-action template)
+fps: <fps>
+temperature: 0.0
+top_p: 1.0
+
+checkpoint_step:                # null | int
+
+# Pass max_frames / total_pixels through resolution_config (mirrors the
+# qwen-vl-utils process_vision_info knobs that the BP eval-ms wires into
+# the VLM stage).
+resolution_config:
+  max_frames: <max_frames>
+  total_pixels: <total_pixels>
+
+# Pin to one GPU; null = all visible.
+gpu_id:
+
+# === Polling ==========================================================
+poll_interval_sec: 20
+timeout_sec: 3600

@@ -1,4 +1,0 @@
-Caption:\n
-The video shows a close-up of a person's hands delicately inserting a processor chip into a laptop's motherboard during assembly. The operator is wearing a striped work uniform with a visible badge and a wristband for static discharge protection. Surrounding the motherboard are various visible components, including capacitors, sockets, and connectors, all arranged on a clean, metallic work surface with alignment tools. The processor chip is small and rectangular, with a grid of golden pins on one side. The operator's precise movements and steady hands demonstrate a high level of skill and familiarity with handling sensitive electronic components.
-Description:\n
-The operator is assembling process chip into a laptop's motherboard.

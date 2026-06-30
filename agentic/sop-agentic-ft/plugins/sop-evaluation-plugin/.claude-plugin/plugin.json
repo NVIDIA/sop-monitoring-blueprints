@@ -1,0 +1,6 @@
+{
+  "name": "sop-evaluation-plugin",
+  "description": "Run SOP evaluation pipelines via the BP evaluation-ms HTTP API: end-to-end inference (temporal segmentation + action recognition + accuracy) and by-action VLM evaluation (per-action-clip inference + accuracy metrics).",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0 AND Apache-2.0"
+}

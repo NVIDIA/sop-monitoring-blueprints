@@ -1,0 +1,419 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Cosmos-Reason Fine-tuning Microservice",
+    "description": "A microservice for fine-tuning Cosmos-Reason models",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "fine-tuning",
+      "description": "Operations for fine-tuning Cosmos-Reason models"
+    },
+    {
+      "name": "status",
+      "description": "Operations for checking training status and results"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Health Check",
+        "description": "Health check endpoint",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "Service is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Cosmos-Reason Fine-tuning Microservice is running"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/start": {
+      "post": {
+        "tags": ["fine-tuning"],
+        "summary": "Start Fine-tuning",
+        "description": "Start a new fine-tuning job. This endpoint initiates a new Cosmos-Reason fine-tuning job with the provided configuration. The training will run in the background and can be monitored via the status endpoint.",
+        "operationId": "startFineTuning",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["dataset_id"],
+                "properties": {
+                  "dataset_id": {
+                    "type": "string",
+                    "description": "ID of the dataset to use for fine-tuning",
+                    "example": "dataset_123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fine-tuning job started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - another job is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string",
+                      "example": "A job is already running: job_uuid. Please wait for it to finish or cancel it."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string",
+                      "example": "Failed to start fine-tuning: Error message"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/status/{job_id}": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Get Training Status",
+        "description": "Get the status of a fine-tuning job. Returns detailed information about the training progress including current step, loss values, and logs.",
+        "operationId": "getTrainingStatus",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "ID of the training job",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Training status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Training job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string",
+                      "example": "Training job not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string",
+                      "example": "Failed to get training status: Error message"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/all_jobs": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Get All Jobs",
+        "description": "Get all fine-tuning jobs",
+        "operationId": "getAllJobs",
+        "responses": {
+          "200": {
+            "description": "All jobs retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/TrainingJob"
+                  },
+                  "example": {
+                    "job_uuid_1": {
+                      "job_id": "job_uuid_1",
+                      "status": "completed",
+                      "progress": 100.0,
+                      "current_step": 1000,
+                      "total_steps": 1000,
+                      "loss": 0.05,
+                      "created_at": "2024-01-01T00:00:00",
+                      "updated_at": "2024-01-01T02:00:00"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fine-tuning/cancel/{job_id}": {
+      "post": {
+        "tags": ["fine-tuning"],
+        "summary": "Cancel Fine-tuning",
+        "description": "Cancel a fine-tuning job. This endpoint cancels a fine-tuning job if it is still in the running state. It will terminate the entire process tree including torchrun and all worker processes.",
+        "operationId": "cancelFineTuning",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "description": "ID of the training job to cancel",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job cancellation response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Training job job_uuid has been cancelled successfully"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found or not in running state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "detail": {
+                      "type": "string",
+                      "example": "The job is not in running state or not found"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FineTuningResponse": {
+        "type": "object",
+        "required": ["job_id", "status", "message", "created_at"],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the training job",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status of the training job",
+            "enum": ["queued", "running", "completed", "failed", "cancelled"],
+            "example": "queued"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable message about the job status",
+            "example": "Fine-tuning job has been queued and will start shortly"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the job was created",
+            "example": "2024-01-01T00:00:00"
+          }
+        }
+      },
+      "TrainingStatus": {
+        "type": "object",
+        "required": ["job_id", "status", "progress", "current_step", "total_steps", "created_at", "updated_at"],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the training job",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status of the training job",
+            "enum": ["queued", "running", "completed", "failed", "cancelled"],
+            "example": "running"
+          },
+          "progress": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0.0,
+            "maximum": 100.0,
+            "description": "Training progress as a percentage",
+            "example": 45.5
+          },
+          "current_step": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Current training step",
+            "example": 450
+          },
+          "total_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Total number of training steps",
+            "example": 1000
+          },
+          "loss": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Current training loss value",
+            "example": 0.15
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the job was created",
+            "example": "2024-01-01T00:00:00"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the job was last updated",
+            "example": "2024-01-01T01:30:00"
+          }
+        }
+      },
+      "TrainingJob": {
+        "type": "object",
+        "required": ["job_id", "status", "progress", "current_step", "total_steps", "created_at", "updated_at"],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the training job"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current status of the training job",
+            "enum": ["queued", "running", "completed", "failed", "cancelled"]
+          },
+          "progress": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0.0,
+            "maximum": 100.0,
+            "description": "Training progress as a percentage"
+          },
+          "current_step": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Current training step"
+          },
+          "total_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Total number of training steps"
+          },
+          "loss": {
+            "type": "number",
+            "format": "float",
+            "nullable": true,
+            "description": "Current training loss value"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the job was created"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the job was last updated"
+          },
+          "log_file_path": {
+            "type": "string",
+            "description": "Path to the log file for this training job"
+          },
+          "process_pid": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Process ID of the training process"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,97 @@
+################################################################################
+# Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
+#
+# NVIDIA Corporation and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA Corporation is strictly prohibited.
+#
+################################################################################
+
+#### start server ####
+# docker compose -f deploy/compose.yaml up -d
+# docker attach deploy-ds-sop-1
+#### end server ####
+services:
+  ds-sop:
+    image: ${DS_SOP_IMAGE:-ds-sop:1.0.0}
+    # Use user: "0:0: to debug
+    user: "${USER_ID:-1001}:${GROUP_ID:-1001}"
+    shm_size: '16gb'
+    runtime: nvidia
+    profiles:
+      - bp_sop_2d
+    ports:
+      - "${API_SERVER_PORT:-8300}:${API_SERVER_PORT:-8300}"
+
+    volumes:
+      # NOTE: the ds-sop-skills generated image keeps the workdir /opt/nvidia/nvds_sop
+      # (RTSP output is native — no rename patch). Mounts/PYTHONPATH point there.
+      - "${HOST_CACHE:-$HOME/.cache/ds-sop}:/opt/nvidia/nvds_sop/.cache"
+      - "${MODEL_ROOT_DIR:-/models}:${MODEL_ROOT_DIR:-/models}"
+      - "${MEDIA_STORAGE_DIR:-/tmp/dummy}${MEDIA_STORAGE_DIR:+:/tmp/nvds_sop_storage}"
+      - "${ENCODE_VIDEO_OUTPUT_DIR:-/tmp/dummy}${ENCODE_VIDEO_OUTPUT_DIR:+:/opt/nvidia/nvds_sop/chunks}"
+      - "${ALERT_SOUND_FILE:-/tmp/dummy}${ALERT_SOUND_FILE:+:/opt/nvidia/nvds_sop/stream/alert.wav}"
+      - "${ACTION_CONFIG_PATH:-/tmp/dummy}${ACTION_CONFIG_PATH:+:$ACTION_CONFIG_PATH}"
+      - "${VLM_PROMPT_PATH:-/tmp/dummy}${VLM_PROMPT_PATH:+:$VLM_PROMPT_PATH}"
+      - ${XDG_RUNTIME_DIR}/pulse:/run/pulse
+
+    env_file:
+      - .env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "${NVIDIA_VISIBLE_DEVICES:-0}"
+      API_SERVER_PORT: ${API_SERVER_PORT:-8300}
+      API_DUMMY_TEST: "${API_DUMMY_TEST:-false}"
+      NGC_API_KEY: ${NGC_API_KEY:-}
+      INSTALL_PROPRIETARY_CODECS: "${INSTALL_PROPRIETARY_CODECS:-true}"
+      DDM_MODEL_PATH: "${DDM_MODEL_PATH:-/models/gbed_models/ddm/checkpoint.pth.tar}"
+      VLLM_MODEL_PATH: "${VLLM_MODEL_PATH:-nvidia/cosmos-reason1-7b}"
+      USE_VLLM_INFERENCE: "${USE_VLLM_INFERENCE:-true}"
+      CAMERA_FORMAT: "${CAMERA_FORMAT:-RGB}"
+      #VLM_INFERENCE_ENDPOINT: "${VLM_INFERENCE_ENDPOINT:-http://localhost:8000}"
+      ENABLE_ALERT_SOUND: "${ENABLE_ALERT_SOUND:-false}"
+      ALERT_SOUND_FILE: "/opt/nvidia/nvds_sop/stream/alert.wav"
+      ENABLE_MESSAGING: "${ENABLE_MESSAGING:-false}"
+      DEFAULT_TOPIC: "${DEFAULT_TOPIC:-mdx-vlm-captions}"
+      SOP_MESSAGING_SCHEMA: "${SOP_MESSAGING_SCHEMA:-JSON}"
+      ENCODE_VIDEO: "${ENCODE_VIDEO:-false}"
+      KAFKA_BROKER: "${KAFKA_BROKER:-localhost:9092}"
+      PULSE_SERVER: "unix:/run/pulse/native"
+      PYTHONPATH: "${PYTHONPATH:-/opt/nvidia/nvds_sop}"
+      ACTION_CONFIG_PATH: "${ACTION_CONFIG_PATH:-/opt/nvidia/nvds_sop/configs/actions.json}"
+      VLM_PROMPT_PATH: "${VLM_PROMPT_PATH:-/opt/nvidia/nvds_sop/configs/vlm_prompts.txt}"
+      DS_ACTION_IN_RESOLUTION: "${DS_ACTION_IN_RESOLUTION:-224}"
+      DS_ACTION_IN_RESIZE_METHOD: "${DS_ACTION_IN_RESIZE_METHOD:-nearest}"
+      BOUNDARY_DELAY_FRAME: "${BOUNDARY_DELAY_FRAME:-8}"
+      VLLM_GPU_MEMORY_UTILIZATION: "${VLLM_GPU_MEMORY_UTILIZATION:-0.3}"
+      VLLM_MAX_MODEL_LEN: "${VLLM_MAX_MODEL_LEN:-20480}"
+      VLLM_MAX_NUM_SEQS: "${VLLM_MAX_NUM_SEQS:-16}"
+      VLM_MAX_TOKENS: "${VLM_MAX_TOKENS:-256}"
+      VLM_TEMPERATURE: "${VLM_TEMPERATURE:-0.2}"
+      VLM_MAX_PIXELS: "${VLM_MAX_PIXELS:-0}"
+      VLM_MAX_FRAMES: "${VLM_MAX_FRAMES:-0}"
+      VLM_RESIZED_HEIGHT: "${VLM_RESIZED_HEIGHT:-0}"
+      VLM_RESIZED_WIDTH: "${VLM_RESIZED_WIDTH:-0}"
+      VLM_MAX_TOTAL_PIXELS: "${VLM_MAX_TOTAL_PIXELS:-0}"
+      VLM_FPS: "${VLM_FPS:-8.0}"
+      SW_ENCODER: "${SW_ENCODER:-true}"
+
+
+    working_dir: "${WORK_DIR_PATH:-/opt/nvidia/nvds_sop}"
+    entrypoint: "${ENTRYPOINT:-./start_server.sh}"
+    network_mode: "${NETWORK_MODE:-host}"
+    privileged: true
+    devices:
+      - "/dev/snd:/dev/snd"
+    depends_on:
+      kafka:
+        condition: service_started
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      stack: 67108864
+    ipc: host
+    stdin_open: true
+    tty: true

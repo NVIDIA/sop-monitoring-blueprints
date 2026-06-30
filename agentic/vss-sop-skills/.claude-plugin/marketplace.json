@@ -1,0 +1,20 @@
+{
+  "name": "vss-sop-skills",
+  "owner": {
+    "name": "NVIDIA",
+    "email": "info@nvidia.com"
+  },
+  "metadata": {
+    "description": "Marketplace for the VSS SOP blueprint life-cycle skills — orchestrate, build, deploy, and test the VSS SOP (Video Search & Summarization — Standard Operating Procedure) blueprint."
+  },
+  "plugins": [
+    {
+      "name": "vss-sop",
+      "source": "./",
+      "version": "1.0.0",
+      "description": "End-to-end VSS SOP blueprint life-cycle skills (sop-build orchestrator + vss-sop-build, vss-sop-deploy, vss-sop-test).",
+      "category": "blueprint",
+      "tags": ["vss", "sop", "build", "deploy", "test", "pipeline"]
+    }
+  ]
+}

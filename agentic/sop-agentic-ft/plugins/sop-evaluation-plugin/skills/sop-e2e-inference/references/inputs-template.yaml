@@ -1,0 +1,76 @@
+######################################################################
+# E2E Evaluation — API-driven inputs template
+# The /sop-e2e-inference skill submits this to the BP evaluation-ms HTTP
+# service. Eval-ms decides the output directory (uuid under RESULTS_ROOT),
+# runs DDM segmentation + VLM inference, and writes accuracy artifacts
+# directly. No Docker mount, no sop-inference-bp checkout.
+######################################################################
+
+# === Required ========================================================
+
+# UUID of a completed VLM training job registered with cr-training-ms.
+training_job_id: <training_job_uuid>
+
+# UUID of the validation dataset registered with the data-generation-ms.
+val_dataset_id: <val_dataset_uuid>
+
+# DDM training job UUID — required when chunking_algorithm=ddm (default).
+# Omit (or null) when chunking_algorithm=uniform.
+ddm_training_job_id: <ddm_training_job_uuid>
+
+# Host-side absolute path that docker-compose maps to
+# /workspace/sop-eval-ms/assets/results inside the eval-ms container.
+host_results_root: /abs/path/to/results
+
+# === Eval-ms endpoint ================================================
+eval_host: localhost
+eval_port: 32090
+
+# === Chunking ========================================================
+
+# ddm     — run DDM temporal segmentation, then VLM per chunk (default)
+# uniform — skip DDM, slice video into fixed-length chunks
+chunking_algorithm: ddm
+
+# Required when chunking_algorithm=uniform. Ignored otherwise.
+chunk_length_sec:                # null | float (>0)
+
+# === DDM (Temporal Segmentation) =====================================
+# Only used when chunking_algorithm=ddm.
+
+# Boundary score cutoff. Lower = more boundaries (recovers missed actions
+# but may admit false positives).
+score_threshold: 0.5
+
+# Non-maximum suppression window in seconds. 0 = auto (≈0.025 × duration).
+nms_sec: 0.0
+
+ddm_batch_size: 8
+frames_per_segment_hint: 256
+
+# Optional: pin a specific DDM checkpoint. null = latest under
+# ddm_training_job_id.
+ddm_checkpoint:                  # null | absolute path
+
+# === VLM (Action Recognition) ========================================
+
+backend: vllm                    # vllm | transformers
+fps: 8
+temperature: 0.0
+top_p: 1.0
+
+# Pick a specific VLM checkpoint step. null = latest.
+checkpoint_step:                 # null | int
+
+# Per-job VLM input resolution overrides — mirrors qwen-vl-utils
+# process_vision_info knobs. See validation/request_validation.py
+# (ResolutionConfig, extra='forbid'). null = use training defaults.
+resolution_config:               # e.g. {max_frames: 40, total_pixels: 16572416}
+
+# Pin to one GPU index (CUDA_VISIBLE_DEVICES). null = all visible GPUs.
+gpu_id:                          # null | 0 | 1 | ...
+
+# === Polling ==========================================================
+
+poll_interval_sec: 20
+timeout_sec: 3600

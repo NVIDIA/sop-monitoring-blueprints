@@ -1,0 +1,6 @@
+{
+  "name": "sop-cr-finetuning-plugin",
+  "description": "Fine-tune Cosmos-Reason2 (CR2) VLM for SOP monitoring with real-time training monitoring",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0 AND Apache-2.0"
+}

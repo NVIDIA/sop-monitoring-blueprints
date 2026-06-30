@@ -1,0 +1,23 @@
+{
+    "server":{
+        "port":8081,
+        "configs":[
+            {
+                "name":"postBodySizeLimit",
+                "value":"50mb"
+            },
+            {
+                "name":"amrRetentionInSec",
+                "value":"3"
+            }
+        ]
+    },
+    "elasticsearch":{
+        "node":"http://localhost:9200",
+        "indexPrefix": "mdx-vlm-captions-",
+        "rawIndex": "mdx-vlm-captions-*"
+    },
+    "kafka":{
+        "brokers": ["localhost:9092"]
+    }
+}

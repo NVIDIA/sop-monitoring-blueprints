@@ -1,0 +1,54 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+######################################################################################################
+
+services:
+  annotation_backend:
+    image: ${ANNOTATION_BACKEND_IMAGE:-sop-annotation-backend:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: annotation-backend-container
+    ports:
+      - "${SERVICE_PORT:-8100}:${SERVICE_PORT:-8100}"
+    volumes:
+      - ${VIDEO_ROOT:-data}:/app/assets/videos
+      - ${LOG_ROOT:-logs}:/app/assets/logs
+    restart: unless-stopped
+  metadata_db:
+    image: postgres:17.2
+    shm_size: 256mb
+    volumes:
+      - ${POSTGRES_DB_ROOT:-postgres_db}:/var/lib/postgresql/data
+      - ./db-init-scripts/01-init-tables.sql:/docker-entrypoint-initdb.d/01-init-tables.sql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sop_db}
+      POSTGRES_SHARED_BUFFERS: ${POSTGRES_SHARED_BUFFERS:-64MB}
+      POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-4MB}
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+    restart: always
+  adminer:
+    image: adminer
+    ports:
+      - 8080:8080
+    restart: always
+volumes:
+  data:
+  sqlite.db:
+  logs:
+  postgres_db:

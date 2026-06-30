@@ -1,0 +1,99 @@
+######################################################################
+# sop-ft-orchestrate — inputs template
+# Pass this file (or a custom version) as the argument to /sop-ft-orchestrate
+######################################################################
+
+# ── Dataset ──────────────────────────────────────────────────────────
+# Path to the annotated SOP dataset on the host.
+# Must contain: actions.json + video subdirs with *_annotation.json
+dataset_path: /path/to/annotated-dataset
+
+# Subject performing the SOP actions (used in VLM prompts)
+subject: operator
+
+# ── Training Service ────────────────────────────────────────────────
+# Root of the running sop-training-bp deployment
+training_bp_root: /path/to/sop-monitoring-blueprints/sop-training-bp
+
+# DDM training config file (relative to training_bp_root or absolute)
+# Defaults to assets/config/ddm_train_config.yaml
+ddm_config: assets/config/ddm_train_config.yaml
+
+# Augmentation config file (relative to training_bp_root or absolute)
+# Defaults to assets/config/augment_config.yaml
+augment_config: assets/config/augment_config.yaml
+
+# VLM training config file (in fine_tune/cr1/config/)
+# Defaults to the currently deployed train_config.toml
+vlm_config: /path/to/fine_tune/cr1/config/train_config.toml
+
+# ── Test / Evaluation Dataset ─────────────────────────────────────────
+# Path to the held-out test set for E2E and by-action evaluation.
+# If omitted, auto-detected from dataset_path by looking for a *_test sibling dir
+# (e.g. dataset_path=.../assy17_train → eval=.../assy17_test).
+eval_dataset_path: /path/to/test-dataset   # optional if *_train/*_test convention used
+
+# ── Output ───────────────────────────────────────────────────────────
+# Where to write run logs, RCA reports, and comparison tables
+output_dir: ./sop_fine_tune
+
+# ── Success Criteria ─────────────────────────────────────────────────
+# The orchestrator stops and declares success when ALL enabled criteria
+# are satisfied simultaneously. Disable any criterion by setting to null.
+success_criteria:
+  # E2E sequence accuracy (fraction of videos with exact action sequence match)
+  e2e_sequence_accuracy: 0.70          # null to disable
+  # E2E VLM action accuracy (fraction of DDM-segmented chunks classified correctly)
+  e2e_action_accuracy: 0.90            # null to disable
+  # By-action accuracy (VLM accuracy on perfectly-segmented clips)
+  by_action_accuracy: 0.90             # null to disable
+  # DDM boundary detection F1 (on test set)
+  ddm_f1: 0.60                         # null to disable
+
+# ── Iteration Limits ─────────────────────────────────────────────────
+# Hard caps to prevent runaway loops
+max_pipeline_iterations: 8    # max full Import→Eval→RCA cycles (was 5)
+                               # Rationale: complex datasets with many visually similar actions
+                               # need: 1 baseline + 1 DDM fix + LR fix + 2-4 targeted DMCQ rounds
+max_retrain_iterations: 5     # max VLM-only retrain attempts per cycle (was 2)
+                               # Rationale: allows LR fix (1) + 4 targeted DMCQ pair rounds
+                               # before escalating to a full cycle restart
+
+# ── Component Overrides ───────────────────────────────────────────────
+# Set to false to skip a component entirely (useful for partial re-runs)
+run_ddm_training: true
+run_vlm_training: true
+run_augmentation: true
+run_e2e_eval: true
+run_by_action_eval: true
+
+# run_rca: default ON. Flip to false ONLY when debugging a single pipeline
+# phase in isolation. This flag is NOT a wall-clock optimization for normal
+# runs — skipping RCA to save ~5 min in a multi-hour pipeline trades
+# independent judgment for confirmation bias and loses the persistent RCA
+# report artifact that Step 8c selection depends on.
+run_rca: true
+
+# ── Augmentation Options ──────────────────────────────────────────────
+# How to handle GQAs if NIM rate limits are hit
+# "nim" = use NVIDIA NIM (requires NGC/developer API key)
+# "local" = use local vLLM server (auto-started if not running)
+# "skip" = disable GQAs entirely (faster, smaller dataset)
+gqas_backend: local           # nim | local | skip  (default: local)
+
+# Local vLLM model to use when gqas_backend=local
+# Must be a HuggingFace model ID accessible from the host
+# Qwen/Qwen3-8B (default): launch WITHOUT --reasoning-parser qwen3
+# Qwen/Qwen3.5-27B (option): launch WITH --reasoning-parser qwen3 via scripts/launch_vllm.sh
+gqas_local_model: Qwen/Qwen3-8B
+
+# Docker container image for the local vLLM server (pinned digest for reproducibility)
+gqas_local_container: vllm/vllm-openai@sha256:2e08b462bb444a6da8a84a533f09024c61617574e67386efe4a723a0633fcc6a
+
+# ── DDM Options ──────────────────────────────────────────────────────
+# Score threshold for boundary detection (tunable without retraining)
+ddm_score_threshold: 0.6
+
+# ── Notifications ────────────────────────────────────────────────────
+# Print a one-line status after each major phase (always true)
+verbose: true

@@ -1,0 +1,129 @@
+######################################################################################################
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# This file is based on DDM-Net (https://github.com/MCG-NJU/DDM),
+# Copyright (c) 2021 Mike Zheng Shou, licensed under the MIT License.
+# Modifications Copyright (c) NVIDIA CORPORATION & AFFILIATES.
+######################################################################################################
+
+dataset_config:
+  # Dataset settings
+  dataset: "DDMDataset"
+  resolution: 224
+  frames_per_side: 5
+  downsample: 1
+  min_change_dur: 0.3
+  num_classes: 2
+  seed: 42
+  video_backend: "pyav"  # "pyav" or "torchcodec"
+
+  # Training data configuration
+  train_config:
+    mode: "train"
+    anno_path: /path/to/train/annotation.json
+    data_root: /path/to/train/full/videos
+    augmentation:
+      RandomResize:
+        enabled: true
+        interpolation: [bilinear, bicubic, nearest]
+        antialias_prob: 0.5
+      ColorJitter:
+        enabled: true
+        brightness: 0.25
+        contrast: 0.3
+        saturation: 0.15
+        hue: 0.02
+      GaussianBlur:
+        enabled: true
+        apply_prob: 0.5
+        kernel_size: 3
+        sigma: [0.1, 0.5]
+
+  # Validation data configuration
+  val_config:
+    mode: "val"
+    anno_path: /path/to/validation/annotation.json
+    data_root: /path/to/val/full/videos
+    temporal_stride: 1
+
+  # DataLoader settings
+  batch_size: 8
+  workers: 4
+
+# ============================================================================
+# Model Configuration
+# ============================================================================
+model_config:
+  model_name: "multiframes_resnet"  # Model architecture
+  backbone: "resnet50"  # Backbone network
+  pretrained: true  # Path to pretrained weights (null for random init)
+  freeze_backbone: false  # Freeze backbone weights
+  num_classes: 2  # Must match dataset_config.num_classes
+  img_size: null  # Input image size (null to use default)
+
+# ============================================================================
+# Training Configuration
+# ============================================================================
+training_config:
+  # === Optimizer settings ===
+  optimizer: "adamw"  # Optimizer: adamw, adam, sgd
+  learning_rate: 0.0001  # Initial learning rate
+  weight_decay: 0.0001  # Weight decay (L2 regularization)
+  momentum: 0.9  # Momentum for SGD
+  opt_eps: null  # Optimizer epsilon (null for default)
+  opt_betas: null  # Optimizer betas for Adam/AdamW (null for default [0.9, 0.999])
+
+  # === Learning rate scheduler ===
+  scheduler: "step"  # LR scheduler: step, cosine, plateau
+  warmup_epochs: 0  # Number of warmup epochs
+  warmup_lr: 0.0001  # Warmup initial learning rate
+  decay_epochs: 2  # Epochs between LR decay (for step scheduler)
+  decay_rate: 0.5  # LR decay rate
+  min_lr: 1e-10  # Minimum learning rate
+  patience_epochs: 10  # Patience for plateau scheduler
+
+  # === Training epochs ===
+  epochs: 30  # Total training epochs
+  eval_freq: 1  # Validation frequency (every N epochs)
+  seed: 42  # Random seed for reproducibility
+
+  # === Gradient clipping ===
+  clip_grad: null  # Gradient clipping value (null to disable)
+  clip_mode: "norm"  # Gradient clipping mode: norm, value
+
+  # === Mixed precision ===
+  amp: true  # Enable automatic mixed precision training
+
+  # === Model EMA (Exponential Moving Average) ===
+  model_ema: true  # Enable model EMA
+  model_ema_decay: 0.999  # EMA decay rate
+  model_ema_start_epoch: 0  # Start EMA after this epoch
+
+  # === Evaluation and logging ===
+  eval_metric: "f1_score"  # Metric to monitor: f1_score, loss
+  save_visualizations: true  # Save visualization images during validation
+  log_interval: 50  # Logging interval (steps)
+
+  # === Output and checkpointing ===
+  output: "./output_lightning"  # Output directory
+  exp_name: "your_experiment_name"  # Experiment name
+  resume: null  # Path to checkpoint to resume from (null for new training)
+  checkpoint_top_k: 3  # Number of best checkpoints to keep
+
+  # === Distributed training ===
+  num_gpus: 8  # Number of GPUs to use. Please adjust this number to the number of GPUs you have available.
+  num_nodes: 1  # Number of nodes for multi-node training
+  strategy: "auto"  # Distributed strategy: auto, ddp, fsdp, deepspeed

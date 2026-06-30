@@ -1,0 +1,372 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+general:
+  use_uvloop: true
+  front_end:
+    _type: fastapi
+    runner_class: vss_agents.api.custom_fastapi_worker.CustomFastApiFrontEndWorker
+    object_store: ${VSS_AGENT_OBJECT_STORE_TYPE}  # Set to local_object_store or remote_object_store
+    cors:
+      allow_origins: ['*']
+      allow_methods: ['*']
+      allow_headers: ['*']
+      allow_credentials: false
+  telemetry:
+    tracing:
+      phoenix:
+        _type: phoenix
+        endpoint: ${PHOENIX_ENDPOINT}/v1/traces
+        project: SC-vss-agent-${VSS_AGENT_VERSION}
+        # weave:
+        #   _type: weave
+        #   project: ${WEAVE_PROJECT}
+
+object_stores:
+  local_object_store:
+    _type: in_memory
+
+function_groups:
+  video_analytics_mcp:
+    _type: mcp_client
+    server:
+      transport: streamable-http
+      url: ${VIDEO_ANALYSIS_MCP_URL}/mcp
+    include:
+    - video_analytics__get_sensor_ids
+    - video_analytics__get_sop_status
+    - video_analytics__get_sop_report
+    - video_analytics__get_sop_as_incidents
+    - video_analytics__get_sop_as_incident
+
+functions:
+  video_understanding:
+    _type: video_understanding
+    vlm_name: vlm
+    # Report-time video analysis is descriptive (not SOP action classification),
+    # so we cap frames/fps/resolution aggressively. The patched video_understanding
+    # tool subsamples + downscales the clip on the agent BEFORE base64-sending it
+    # to the VLM, which is the dominant report-generation cost.
+    max_frames: 8
+    max_fps: 1
+    min_pixels: 3136
+    max_pixels: 200704
+    reasoning: false
+    video_url_tool: vst_video_url
+    vlm_mode: ${VLM_MODE}
+    internal_ip: ${HOST_IP}
+    external_ip: ${EXTERNAL_IP}
+    vst_internal_url: ${VST_INTERNAL_URL}
+    use_base64: true
+
+  vst_video_url:
+    _type: vst.video_clip
+    vst_internal_url: ${VST_INTERNAL_URL}
+    vst_external_url: ${VST_EXTERNAL_URL}
+    # Disable bbox overlay for clip extraction: SOP incidents carry no object
+    # bounding boxes (objectId is always empty), and VST's OSD transcode path
+    # fails to multiplex short (~2s) incident clips ("Could not multiplex
+    # stream" -> HTTP 500). The plain (no-overlay) clip path works reliably.
+    overlay_config: false
+    time_format: iso
+
+  vst_picture_url:
+    _type: vst.snapshot
+    vst_internal_url: ${VST_INTERNAL_URL}
+    vst_external_url: ${VST_EXTERNAL_URL}
+    overlay_config: true
+    time_format: iso
+
+  chart_generator:
+    _type: chart_generator
+    object_store_name: ${VSS_AGENT_OBJECT_STORE_TYPE}
+    object_store_base_url: ${VSS_AGENT_REPORTS_BASE_URL}
+
+  geolocation:
+    _type: geolocation
+    timeout: 10
+
+  template_report_gen:
+    _type: template_report_gen
+    object_store: ${VSS_AGENT_OBJECT_STORE_TYPE}
+    output_dir: /tmp/sop_reports
+    save_local_copy: true
+    base_url: ${VSS_AGENT_REPORTS_BASE_URL}
+    template_path: ${VSS_AGENT_TEMPLATE_PATH}
+    template_name: ${VSS_AGENT_TEMPLATE_NAME}
+    agent_version: ${VSS_AGENT_VERSION}
+    llm_name: llm
+    video_understanding_tool: video_understanding
+    picture_url_tool: vst_picture_url
+    video_url_tool: vst_video_url
+    geolocation_tool: geolocation
+    vst_internal_url: ${VST_INTERNAL_URL}
+    vst_external_url: ${VST_EXTERNAL_URL}
+    # Report-time VLM video analysis is intentionally DISABLED. The ds_sop_model
+    # VLM serves the continuous real-time SOP pipeline; on-demand report requests
+    # contend for the same engine and reliably hit the 300s server-side timeout
+    # (generating nothing) before stalling the engine. With an empty prompt list
+    # template_report_gen skips _run_vlm_analysis entirely, so reports generate in
+    # seconds from the aggregated SOP/Elasticsearch data instead of waiting ~5min
+    # for a VLM step that times out. Restore these prompts if/when the report-time
+    # VLM path is made reliable.
+    vlm_prompts: []
+    report_prompt: |
+      Template to populate:
+      {template}
+
+      Instructions:
+      1. Extract SOP compliance details from tool results (sensor ID, time range,
+         violations, cycle status, actions observed)
+      2. Video analysis (worker actions, environment description) is typically
+         unavailable; if no video_understanding results are provided, set those
+         template fields to "N/A" and rely on the SOP compliance data instead
+      3. Fill in all template fields with extracted information
+      4. For compliance_status: Use "Compliant" if no violations, "Non-Compliant"
+         if violations exist, or "Partially Compliant" if minor issues
+      5. Use "Unknown" or "N/A" for fields where information is not available
+      6. Provide professional notes about observed compliance and recommendations
+         for improvement
+      7. Ensure the report is complete and well-structured
+      8. For Report Identifier, generate a unique identifier for the report
+      9. AI Agent version: {agent_version}
+
+      Return only the populated markdown template without any additional text or code blocks.
+
+  report_agent:
+    _type: report_agent
+    get_incidents_tool: video_analytics_mcp.video_analytics__get_sop_as_incidents
+    get_incident_tool: video_analytics_mcp.video_analytics__get_sop_as_incident
+    template_report_tool: template_report_gen
+
+llms:
+  llm:
+    _type: ${LLM_MODEL_TYPE:-nim}
+    model_name: ${LLM_NAME}
+    base_url: ${LLM_BASE_URL}/v1
+    max_tokens: 4096
+    temperature: 0.0
+
+  vlm:
+    _type: ${VLM_MODEL_TYPE:-nim}
+    model_name: ${VLM_NAME}
+    base_url: ${VLM_BASE_URL}/v1
+    temperature: 0.0
+    max_tokens: 1024
+
+  eval_llm_judge:
+    _type: nim
+    model_name: ${EVAL_LLM_JUDGE_NAME}
+    base_url: ${EVAL_LLM_JUDGE_BASE_URL}/v1
+    max_tokens: 4096
+    temperature: 0.0
+
+workflow:
+  _type: top_agent
+  llm_name: llm
+  log_level: INFO
+  max_retries: 3
+  max_iterations: 30
+  max_history: 20
+  llm_reasoning: false
+  planning_enabled: false
+  tool_names:
+  - video_analytics_mcp.video_analytics__get_sensor_ids
+  - video_analytics_mcp.video_analytics__get_sop_status
+  - video_analytics_mcp.video_analytics__get_sop_report
+  - vst_picture_url
+  - vst_video_url
+  subagent_names:
+  - report_agent
+  # yamllint disable rule:line-length
+  prompt: |
+    You are an SOP (Standard Operating Procedure) compliance monitoring agent with tool calling capabilities.
+    You analyze VisionLLM data from video analytics to monitor worker actions and SOP compliance.
+    Be concise in your reasoning. Avoid repetitive thoughts. Think step-by-step but briefly.
+    CRITICAL: Never output <TOOLCALL> in your response. Use proper function calling syntax only.
+    You should use multiple tool calls to answer the user's query and don't return a result until you have all the information you need.
+    Always respond in English.
+
+    CRITICAL RULE - NO HALLUCINATION:
+    You do NOT have any built-in knowledge about sensors, SOP data, actions, or any system data.
+    You MUST ALWAYS call the appropriate tool to get real data. NEVER fabricate or guess.
+
+    TOOL CALL RULES:
+    - ALWAYS include ALL required parameters when calling tools
+    - If a tool call fails, RETRY IMMEDIATELY with correct parameters.
+    - NEVER answer a data question without calling a tool first.
+
+    AVAILABLE TOOLS AND WHEN TO USE THEM:
+
+    1. video_analytics_mcp__video_analytics__get_sensor_ids
+       USE WHEN: User asks about available sensors/cameras.
+       The 'place' parameter is OPTIONAL. If no place is mentioned, call with NO arguments.
+       NEVER pass place='None', place='null', or place=''.
+
+    2. video_analytics_mcp__video_analytics__get_sop_status
+       USE WHEN: User asks about current SOP status, latest actions, current cycle,
+       what is happening now, or what action a worker is doing.
+       Parameters: optional sensor_id, start_time, end_time, max_count (default 10).
+       Returns: Recent VisionLLM messages with current_action, cycle, missing/misordered steps.
+       IMPORTANT: Call this tool ONCE, then IMMEDIATELY summarize the results. Do NOT call it again.
+
+    3. video_analytics_mcp__video_analytics__get_sop_report
+       USE WHEN: User asks for SOP data, compliance summary, all violations, cycle history,
+       or aggregated statistics over a time period. Also use BEFORE routing to report_agent
+       to gather SOP compliance data.
+       Parameters: optional sensor_id, start_time, end_time.
+       Returns: Full report data with total messages, cycle progression, all violations, unique actions,
+       and a formatted_report markdown string.
+       IMPORTANT: Call this tool ONCE, then use the results. Do NOT call it again.
+
+    4. vst_picture_url
+       USE WHEN: User asks to take a snapshot or get a picture from a sensor.
+       Required: sensor_id. Optional: start_time.
+
+    5. vst_video_url
+       USE WHEN: User asks for a video clip from a sensor or when generating a compliance report.
+       Required: sensor_id. Optional: start_time, end_time.
+       Returns: A URL to a short video clip that can be embedded in chat.
+
+    SOP COMPLIANCE REPORT GENERATION (CRITICAL - MUST FOLLOW):
+    When the user asks to "Generate an SOP compliance report" or any variation requesting a report,
+    you MUST ALWAYS route to the report_agent sub-agent. Do NOT call get_sop_report directly for
+    report generation - the report_agent handles .md and .pdf file generation, snapshot inclusion,
+    and video analysis which get_sop_report alone cannot do.
+
+    To generate a report, call report_agent with these parameters:
+      - user_query: The original user question
+      - sensor_id: The sensor ID from the query
+      - start_time: The start time (ISO format)
+      - end_time: The end time (ISO format)
+
+    The report_agent will automatically:
+      - Gather SOP compliance data
+      - Perform video analysis of the sensor footage
+      - Generate downloadable .md and .pdf report files
+      - Include a snapshot picture in the report
+      - Return download links for both file formats
+
+    After report_agent returns, try calling vst_video_url to get a short video clip.
+    If vst_video_url fails, skip the video clip and present the report without it.
+
+    Present the complete response including:
+      - The full report content with .md and .pdf download links
+      - The snapshot picture (included in the report)
+      - The short video clip URL if available
+
+    CRITICAL: If a report has already been generated for the same sensor/time range in previous
+    interactions AND the user did not request a new report, return the answer with the EXACT URLs
+    from conversation history. DO NOT call report_agent again. DO NOT modify any parts of the URLs.
+
+    SOP STATUS FORMAT (for non-report queries):
+    When presenting SOP status (not a full report), format as:
+
+    ## SOP Compliance Status
+    **Sensor:** <sensor_id>
+    **Time Range:** <start> to <end>
+    **Total Messages Analyzed:** <count>
+
+    ### Cycle Status
+    - **Current Cycle:** <number>
+    - **Completed Cycles:** <count>
+
+    ### SOP Violations
+    - **Missing Steps Detected:** <count> occurrences
+      (list each: cycle N, steps [X, Y] at timestamp)
+    - **Misordered Steps Detected:** <count> occurrences
+      (list each: cycle N, steps [X, Y] at timestamp)
+
+    ### Current Activity
+    - **Latest Action:** <action description>
+    - **Unique Actions Observed:** <list>
+
+    TIMESTAMP FORMAT (CRITICAL):
+    Use: YYYY-MM-DDTHH:MM:SS.sssZ (e.g., 2025-11-12T14:19:30.000Z)
+    ALWAYS include milliseconds (.000) and use Z for timezone.
+
+    TIME CALCULATION:
+    - "last X minutes" → end_time = NOW, start_time = NOW - X minutes
+    - "last X hours" → end_time = NOW, start_time = NOW - X hours
+
+    RESPONSE FORMAT:
+    After completing tool calls, provide ONLY the clean formatted answer. Do NOT include reasoning phrases.
+    Please provide the content of the final report in the chat including download links and video clip.
+  # yamllint enable rule:line-length
+eval:
+  general:
+    workflow_alias: ${WEAVE_WORKFLOW_ALIAS}
+    output_dir: ${EVAL_DIR}/results
+    dataset:
+      _type: json
+      file_path: ${EVAL_DIR}/dataset.json
+      structure:
+        question_key: "query"
+
+  evaluators:
+    trajectory_evaluator:
+      _type: customized_trajectory_evaluator
+      llm_name: eval_llm_judge
+      track_agent_selected_tools_only: true
+      max_retries: 2
+      llm_judge_reasoning: true
+      custom_prompt_template: |
+        You are an expert evaluator assessing an AI agent's performance on tool calling.
+
+        Question: {question}
+
+        Available Tools and Their Schemas:
+        {tool_schemas}
+
+        Agent's Actions and Tool Calls:
+        {agent_trajectory}
+
+        Agent's Final Answer:
+        {answer}
+
+        Reference/Expected Output:
+        {reference}
+
+        Evaluation Criteria:
+        1. **Tool Selection**: Did the agent select the appropriate tools for the task?
+        2. **Parameter Accuracy**: Were tool parameters correct according to the tool schemas above?
+        Check that all parameters match the expected types, required fields, and descriptions.
+        3. **Data Retrieval**: Did the agent successfully retrieve the necessary data? Sometimes the
+        data is not available, that should not be considered as a failure. As long as the tools are
+        called correctly, it should be considered as a success.
+        4. **Completeness**: Did the agent gather all required information to answer the question?
+        5. **Efficiency**: Did the agent avoid unnecessary or redundant tool calls?
+
+        IMPORTANT NOTES:
+
+        1. VLM Failure: The report_agent always will fail on VLM analysis. This is EXPECTED and
+           should NOT be considered a failure. As long as the correct tools are called, it should
+           be considered as a success and should be scored 1.0.
+
+        2. LLM Model Names in Trajectory: Some trajectory steps have tool names equal to LLM model names. These are NOT
+           actual tool calls. They are INTERNAL REASONING STEPS showing which LLM is thinking.
+
+           **CRITICAL: When evaluating tool selection, COMPLETELY IGNORE any steps where the tool
+           name is an LLM model name. Only evaluate steps where actual function tools are called.**
+
+        Scoring Guidelines:
+        - 1.0: Perfect execution - all criteria met, accurate answer
+        - 0.8-0.9: Excellent - minor issues but correct answer
+        - 0.6-0.7: Good - some issues but mostly correct
+        - 0.4-0.5: Fair - significant issues, partially correct
+        - 0.0-0.3: Poor - major issues, incorrect or incomplete answer
+
+        Think through your evaluation carefully, then output only a single number (your score from
+        0.0 to 1.0).

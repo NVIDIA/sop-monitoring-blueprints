@@ -1,0 +1,38 @@
+
+services:
+
+  kibana-init-container-sop:
+    build:
+      context: $MDX_SAMPLE_APPS_DIR/sop/sop-app
+      dockerfile: $MDX_SAMPLE_APPS_DIR/sop/sop-app/Dockerfiles/kibana-dashboard.Dockerfile
+    network_mode: "host"
+    profiles: ["bp_sop_2d"]
+    container_name: mdx-kibana-init-sop
+    command: bash /opt/mdx/init-scripts/kibana-import-dashboard.sh
+    depends_on:
+      kibana:
+        condition: service_healthy
+
+  vss-video-analytics-api-sop:
+    image: nvcr.io/nvidia/vss-core/vss-video-analytics-api:3.1.0
+    network_mode: "host"
+    profiles: ["bp_sop_2d"]
+    volumes:
+      - $MDX_SAMPLE_APPS_DIR/sop/sop-app/vss-video-analytics-api:/opt/mdx/vss-video-analytics-api
+      - vss-video-analytics-api-sop:/web-api-app/files
+    container_name: vss-video-analytics-api-sop
+    command: node index.js --config /opt/mdx/vss-video-analytics-api/configs/vss-video-analytics-api-config.json
+    restart: always
+    depends_on:
+      broker-health-check:
+        condition: service_completed_successfully
+      elasticsearch-init-container:
+        condition: service_completed_successfully
+
+volumes:
+  vss-video-analytics-api-sop:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: $MDX_DATA_DIR/data_log/vss_video_analytics_api

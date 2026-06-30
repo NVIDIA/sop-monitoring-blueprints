@@ -1,0 +1,821 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Evaluation Microservice",
+    "description": "A microservice for evaluating SOP VLM models",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Root",
+        "description": "Health check endpoint",
+        "operationId": "root_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluation/start": {
+      "post": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Start Evaluation",
+        "description": "Start a per-action-chunk evaluation job for a completed training experiment.",
+        "operationId": "start_evaluation_api_v1_evaluation_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluation/status/{eval_job_id}": {
+      "get": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Get Evaluation Status",
+        "description": "Get the status of an evaluation job.",
+        "operationId": "get_evaluation_status_api_v1_evaluation_status__eval_job_id__get",
+        "parameters": [
+          {
+            "name": "eval_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Eval Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluation/results/{eval_job_id}": {
+      "get": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Get Evaluation Results",
+        "description": "Get the full per-action accuracy results for a completed evaluation job.",
+        "operationId": "get_evaluation_results_api_v1_evaluation_results__eval_job_id__get",
+        "parameters": [
+          {
+            "name": "eval_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Eval Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluation/all_jobs": {
+      "get": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Get All Evaluation Jobs",
+        "description": "List all evaluation jobs.",
+        "operationId": "get_all_evaluation_jobs_api_v1_evaluation_all_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evaluation/cancel/{eval_job_id}": {
+      "post": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Cancel Evaluation",
+        "description": "Cancel a running evaluation job.",
+        "operationId": "cancel_evaluation_api_v1_evaluation_cancel__eval_job_id__post",
+        "parameters": [
+          {
+            "name": "eval_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Eval Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/e2e-evaluation/start": {
+      "post": {
+        "tags": [
+          "e2e-evaluation"
+        ],
+        "summary": "Start E2E Evaluation",
+        "description": "Start an end-to-end evaluation job (DDM temporal segmentation + VLM action recognition).",
+        "operationId": "start_e2e_evaluation_api_v1_e2e_evaluation_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/E2eEvaluationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/E2eEvaluationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/e2e-evaluation/status/{eval_job_id}": {
+      "get": {
+        "tags": [
+          "e2e-evaluation"
+        ],
+        "summary": "Get E2E Evaluation Status",
+        "description": "Get the status of an e2e evaluation job.",
+        "operationId": "get_e2e_evaluation_status_api_v1_e2e_evaluation_status__eval_job_id__get",
+        "parameters": [
+          {
+            "name": "eval_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Eval Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/E2eEvaluationStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/e2e-evaluation/results/{eval_job_id}": {
+      "get": {
+        "tags": [
+          "e2e-evaluation"
+        ],
+        "summary": "Get E2E Evaluation Results",
+        "description": "Get the full results for a completed e2e evaluation job.",
+        "operationId": "get_e2e_evaluation_results_api_v1_e2e_evaluation_results__eval_job_id__get",
+        "parameters": [
+          {
+            "name": "eval_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Eval Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/e2e-evaluation/all_jobs": {
+      "get": {
+        "tags": [
+          "e2e-evaluation"
+        ],
+        "summary": "Get All E2E Evaluation Jobs",
+        "description": "List all e2e evaluation jobs.",
+        "operationId": "get_all_e2e_evaluation_jobs_api_v1_e2e_evaluation_all_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/e2e-evaluation/cancel/{eval_job_id}": {
+      "post": {
+        "tags": [
+          "e2e-evaluation"
+        ],
+        "summary": "Cancel E2E Evaluation",
+        "description": "Cancel a running e2e evaluation job.",
+        "operationId": "cancel_e2e_evaluation_api_v1_e2e_evaluation_cancel__eval_job_id__post",
+        "parameters": [
+          {
+            "name": "eval_job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Eval Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "E2eEvaluationRequest": {
+        "properties": {
+          "training_job_id": {
+            "type": "string",
+            "title": "Training Job Id"
+          },
+          "ddm_training_job_id": {
+            "type": "string",
+            "title": "Ddm Training Job Id"
+          },
+          "val_dataset_id": {
+            "type": "string",
+            "title": "Val Dataset Id"
+          },
+          "fps": {
+            "type": "integer",
+            "title": "Fps",
+            "default": 8
+          },
+          "temperature": {
+            "type": "number",
+            "title": "Temperature",
+            "default": 0.0
+          },
+          "backend": {
+            "type": "string",
+            "title": "Backend",
+            "default": "vllm"
+          },
+          "checkpoint_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Step"
+          },
+          "ddm_checkpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ddm Checkpoint"
+          },
+          "resolution_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Config"
+          },
+          "score_threshold": {
+            "type": "number",
+            "title": "Score Threshold",
+            "default": 0.5
+          },
+          "nms_sec": {
+            "type": "number",
+            "title": "Nms Sec",
+            "default": 0.0
+          },
+          "ddm_batch_size": {
+            "type": "integer",
+            "title": "Ddm Batch Size",
+            "default": 8
+          },
+          "frames_per_segment_hint": {
+            "type": "integer",
+            "title": "Frames Per Segment Hint",
+            "default": 256
+          }
+        },
+        "type": "object",
+        "required": [
+          "training_job_id",
+          "ddm_training_job_id",
+          "val_dataset_id"
+        ],
+        "title": "E2eEvaluationRequest"
+      },
+      "E2eEvaluationResponse": {
+        "properties": {
+          "eval_job_id": {
+            "type": "string",
+            "title": "Eval Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eval_job_id",
+          "status",
+          "message",
+          "created_at"
+        ],
+        "title": "E2eEvaluationResponse"
+      },
+      "E2eEvaluationStatus": {
+        "properties": {
+          "eval_job_id": {
+            "type": "string",
+            "title": "Eval Job Id"
+          },
+          "training_job_id": {
+            "type": "string",
+            "title": "Training Job Id"
+          },
+          "ddm_training_job_id": {
+            "type": "string",
+            "title": "Ddm Training Job Id"
+          },
+          "val_dataset_id": {
+            "type": "string",
+            "title": "Val Dataset Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "overall_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Accuracy"
+          },
+          "avg_f1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg F1"
+          },
+          "checkpoint_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Step"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eval_job_id",
+          "training_job_id",
+          "ddm_training_job_id",
+          "val_dataset_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "E2eEvaluationStatus"
+      },
+      "EvaluationRequest": {
+        "properties": {
+          "training_job_id": {
+            "type": "string",
+            "title": "Training Job Id"
+          },
+          "val_dataset_id": {
+            "type": "string",
+            "title": "Val Dataset Id"
+          },
+          "fps": {
+            "type": "integer",
+            "title": "Fps",
+            "default": 8
+          },
+          "temperature": {
+            "type": "number",
+            "title": "Temperature",
+            "default": 0.0
+          },
+          "backend": {
+            "type": "string",
+            "title": "Backend",
+            "default": "vllm"
+          },
+          "checkpoint_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Step"
+          },
+          "resolution_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Config"
+          }
+        },
+        "type": "object",
+        "required": [
+          "training_job_id",
+          "val_dataset_id"
+        ],
+        "title": "EvaluationRequest"
+      },
+      "EvaluationResponse": {
+        "properties": {
+          "eval_job_id": {
+            "type": "string",
+            "title": "Eval Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eval_job_id",
+          "status",
+          "message",
+          "created_at"
+        ],
+        "title": "EvaluationResponse"
+      },
+      "EvaluationStatus": {
+        "properties": {
+          "eval_job_id": {
+            "type": "string",
+            "title": "Eval Job Id"
+          },
+          "training_job_id": {
+            "type": "string",
+            "title": "Training Job Id"
+          },
+          "val_dataset_id": {
+            "type": "string",
+            "title": "Val Dataset Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "overall_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Accuracy"
+          },
+          "checkpoint_step": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Step"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "eval_job_id",
+          "training_job_id",
+          "val_dataset_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EvaluationStatus"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "evaluation",
+      "description": "Per-action-chunk VLM evaluation"
+    },
+    {
+      "name": "e2e-evaluation",
+      "description": "End-to-end DDM + VLM evaluation"
+    },
+    {
+      "name": "status",
+      "description": "Health + job status"
+    }
+  ]
+}

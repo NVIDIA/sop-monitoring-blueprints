@@ -1,0 +1,6 @@
+{
+  "name": "sop-rca-plugin",
+  "description": "Root cause analysis for SOP monitoring pipeline failures. Analyzes end-to-end evaluation logs, DDM temporal segmentation, VLM action recognition, training data, and fine-tuning configs to identify failure patterns and produce actionable improvement recommendations.",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0 AND Apache-2.0"
+}

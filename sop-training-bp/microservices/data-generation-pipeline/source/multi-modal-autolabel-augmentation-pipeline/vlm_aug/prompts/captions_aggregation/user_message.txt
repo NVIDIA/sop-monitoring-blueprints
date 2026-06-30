@@ -1,6 +1,0 @@
-Below are captions for a given video. Please aggregate and summarize those captions into a detailed and precise one.
-And the point of {fact_prompt} must be mentioned.
-Only return the summarized caption.
-
-Given captions:
-{captions}

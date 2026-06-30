@@ -1,0 +1,62 @@
+######################################################################
+# By-Action Evaluation — API-driven inputs template
+# The /sop-by-action-eval skill submits this to the BP evaluation-ms HTTP
+# service. Eval-ms decides the output directory (uuid under RESULTS_ROOT)
+# and runs the inference subprocess internally — there is no Docker
+# mount or sop-inference-bp checkout to discover.
+######################################################################
+
+# === Required ========================================================
+
+# UUID of a completed training job registered with cr-training-ms.
+# Eval-ms reads actions.json from the original (pre-augmentation) dataset
+# linked to this job's augmented dataset.
+training_job_id: <training_job_uuid>
+
+# UUID of the validation dataset registered with the data-generation-ms.
+val_dataset_id: <val_dataset_uuid>
+
+# Host-side absolute path that docker-compose maps to
+# /workspace/sop-eval-ms/assets/results inside the eval-ms container.
+# The skill uses this to translate eval-ms's container-side output path
+# into a host path that the caller can read.
+# (See docker-compose.yml: services.evaluation-ms.volumes -> RESULTS_ROOT)
+host_results_root: /abs/path/to/results
+
+# === Eval-ms endpoint ================================================
+# Defaults match the BP docker-compose service mapping.
+eval_host: localhost
+eval_port: 32090
+
+# === Inference parameters (all optional — eval-ms defaults take over) =
+
+# Pin to one GPU index (CUDA_VISIBLE_DEVICES). null = all visible GPUs.
+gpu_id:                          # null | 0 | 1 | ...
+
+# Use 'transformers' (slower, broader compat) when the model is a LoRA
+# adapter or when vLLM tokenizer compatibility breaks.
+backend: vllm                    # vllm | transformers
+
+# fps MUST match train_config.toml [custom.vision].fps for fair eval.
+fps: 8
+temperature: 0.0
+top_p: 1.0
+
+# Pick a specific checkpoint step under the training job's safetensors/
+# directory. null = pick the latest by step number.
+checkpoint_step:                 # null | int
+
+# Per-job VLM input resolution overrides. Mirror qwen-vl-utils
+# process_vision_info knobs. null = use training defaults.
+# See microservices/evaluation-ms/validation/request_validation.py for
+# the full ResolutionConfig schema (extra='forbid' — unknown keys reject).
+resolution_config:               # e.g. {max_frames: 40, total_pixels: 16572416}
+
+# === Polling ==========================================================
+
+# How often to GET /api/v1/evaluation/status/{eval_job_id}.
+poll_interval_sec: 20
+
+# Hard timeout. The eval-ms job continues independently if the skill
+# gives up here — check /status manually before retrying.
+timeout_sec: 3600

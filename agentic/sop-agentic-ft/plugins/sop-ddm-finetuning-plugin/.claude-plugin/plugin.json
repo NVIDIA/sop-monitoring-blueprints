@@ -1,0 +1,6 @@
+{
+  "name": "sop-ddm-finetuning-plugin",
+  "description": "Fine-tune DDM-Net temporal boundary detector for SOP monitoring with pre-flight validation and real-time training monitoring",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0 AND Apache-2.0"
+}

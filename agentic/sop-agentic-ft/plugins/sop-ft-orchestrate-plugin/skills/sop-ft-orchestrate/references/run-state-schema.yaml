@@ -1,0 +1,123 @@
+run_id: <timestamp>
+iteration: 0
+status: running
+
+# Iteration budget — ENFORCED by Step 8a's pre-PARTIAL gate.
+# Update after EVERY iteration. Only `substantive` iters count against the budget.
+# See SKILL.md "Iteration Budget — ENFORCED" section.
+iteration_budget:
+  max_pipeline_iterations: <from inputs.yaml, default 8>
+  iterations_substantive: 0      # count of: augment-config-change, training-config-change, ddm-training-config-change
+  iterations_eval_only: 0        # count of: eval-config-change (threshold sweeps, etc.) — FREE
+  iterations_remaining: 8        # = max - substantive
+  rca_runs_completed: 0          # invariant when run_rca: true — must equal count(eval_history that miss success_criteria); enforced by Step 8a pre-flight
+  attempts:
+    augment_config_change: []        # list of distinct configs tried
+    training_config_change: []       # list of distinct training-config changes tried
+    ddm_training_config_change: []   # list of distinct DDM training changes tried
+    code_change: []                  # infra fixes — FREE, do not count
+
+# After RCA, write the full remaining plan here per Step 8c "Required upfront".
+iteration_queue: []  # list of {iter, type, action, hypothesis}
+
+# Dataset
+dataset_path: ...
+val_dataset_id: null          # eval-ms dataset UUID — submitted with every eval request
+augmented_dataset_id: null    # set after Phase 2; versioned on re-augment (e.g., _v2)
+augment_config_version: 1     # incremented each time augment config is changed
+
+# DDM
+ddm_config_version: 1         # incremented each time DDM config is changed
+ddm_job_id: null              # internal training-job id (local file watchdog flow)
+ddm_training_job_id: null     # eval-ms DDM training UUID — submitted to /api/v1/e2e-evaluation/start
+ddm_checkpoint: null          # path to best checkpoint (legacy; informational)
+ddm_best_f1: null
+ddm_threshold: <from inputs>  # tuned by eval-config-change
+
+# VLM
+vlm_config_version: 1         # incremented each time VLM config is changed
+vlm_job_id: null              # internal training-job id (local file watchdog flow)
+training_job_id: null         # eval-ms VLM training UUID — submitted to /api/v1/{evaluation,e2e-evaluation}/start
+vlm_training_mode: null       # "lora" or "full" — auto-detected from checkpoint in Step 6
+vlm_adapter_path: null        # LoRA adapter dir — populated only when vlm_training_mode == "lora"
+vlm_inference_path: null      # path to pass to evaluation:
+                              #   LoRA run: <results_dir>/merged_model
+                              #   Full FT:  <results_dir>/checkpoint-N  (the checkpoint itself)
+
+# Per-iteration eval output paths — recorded from each eval skill's stdout
+# JSON envelope (see sop-evaluation-plugin/scripts/eval_api_client.py).
+# Eval-ms writes output under its own RESULTS_ROOT/<eval_job_id>/ — the
+# orchestrator does NOT relocate or copy these; it just records the host
+# paths so downstream RCA / progress chart consumers can read them.
+eval_outputs:
+  by_action:
+    eval_job_id: null
+    host_output_dir: null     # <host_results_root>/<eval_job_id>/ (live eval-ms dir)
+    snapshot_dir: null        # <run_dir>/iter<N>/by_action — full cp -a copy (durable; Step 7c)
+    inference_results_json: null
+    log: null
+    overall_accuracy_evalms: null         # from envelope.headline_metrics
+    overall_accuracy_authoritative: null  # from analyze_by_action_confusion (preferred for success-criteria)
+  e2e:
+    eval_job_id: null
+    host_output_dir: null     # live eval-ms dir
+    snapshot_dir: null        # <run_dir>/iter<N>/e2e — full cp -a copy (durable; Step 7c)
+    e2e_results_json: null
+    accuracy_json: null
+    video_name_to_output_text_json: null
+    action_recognition_log: null
+    temporal_segmentation_dir: null
+    temporal_segmentation_log: null
+    sop_e2e_eval_log: null
+    log: null
+
+# Eval vision params. MUST be populated before Step 7 by parsing
+#   <vlm_config> (train_config.toml) fields under [custom.vision].
+# Re-populate every time Step 6 (VLM training) runs — these must always match
+# the training config that produced the current vlm_inference_path.
+# Drift here = RCA Pattern 8 (Evaluation Parameter Mismatch): silent accuracy
+# loss that looks like a VLM capability gap.
+eval_vision_params:
+  fps: null                   # ← train_config.toml [custom.vision] fps
+  max_frames: null            # ← train_config.toml [custom.vision] max_frames
+  total_pixels: null          # ← train_config.toml [custom.vision] total_pixels
+
+# Results history. Append rows ONLY via scripts/rs_update.py (never hand-edit).
+eval_history: []
+# Canonical entry (gen_progress.py renders progress.md/.html from these):
+#   iteration: int
+#   type: "substantive" | "eval-only"      # REQUIRED — else gen_progress falls back to
+#                                          #   iteration_queue lookup, then "substantive"
+#   by_action_acc / e2e_action_acc / e2e_seq_acc / ddm_f1: float|null
+#   ddm_threshold: float
+#   changes_applied: [str]
+#   errors: {wrong: int, duplicate: int, missing: int}   # nested dict (preferred)
+#   notes: str                              # per-row note (key is `notes`, plural)
+#   criteria_met: bool (optional)           # set true on the success iter
+# NOTE: gen_progress.py is tolerant of legacy variants (flat wrong/duplicate/missing,
+#   singular `note`, missing `type`) but new writers should use the canonical shape above.
+
+rca_reports: []
+# One entry per iteration whose evaluation missed success_criteria. Each entry:
+#   {iteration, report_path, typed_actions: [...]}
+# Empty ONLY when `run_rca: false`.
+# A missed criterion in `eval_history` with no matching `rca_reports` entry means
+# RCA was skipped — that is a bug, not a feature.
+
+# Phase completion status — used for resume after context compression or restart.
+# Write <phase>: in_progress BEFORE delegating; write done AFTER the delegation
+# returns successfully. Never skip the in_progress write — it's what lets a
+# restarting agent distinguish "never started" from "started but unclear".
+phase_status:
+  import: not_started        # not_started → in_progress → done
+  augment: not_started
+  ddm_train: not_started
+  vlm_train: not_started
+  eval_by_action: not_started
+  eval_e2e: not_started
+  rca: not_started
+
+overrides:
+  sop_monitoring_path: null  # <run_dir>/overrides/sop_monitoring — or null
+  ddm_base_path_host: null   # <run_dir>/overrides/ddm_base/ — or null
+  vlm_aug_override: null     # <run_dir>/overrides/vlm_aug — or null (Claude API backend)

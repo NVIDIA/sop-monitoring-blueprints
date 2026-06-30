@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="60">
+<title>SOP Fine-tuning Progress</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px 28px;color:#202124;}
+h1{font-size:20px;font-weight:500;margin-bottom:3px;}
+.sub{font-size:12px;color:#5f6368;margin-bottom:18px;}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:1200px;margin-bottom:18px;}
+.c{background:#fff;border:1px solid #dadce0;border-radius:8px;padding:13px 17px;}
+.cl{font-size:10px;color:#5f6368;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}
+.cv{font-size:26px;font-weight:500;}.cd{font-size:11px;color:#5f6368;margin-top:4px;}
+.c.danger{border-color:#d93025;background:#fce8e6;}.c.danger .cv{color:#d93025;}
+.c.warn{border-color:#e37400;background:#fef7e0;}.c.warn .cv{color:#e37400;}
+.c.ok{border-color:#1e8e3e;background:#e6f4ea;}.c.ok .cv{color:#1e8e3e;}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1200px;}
+.full{grid-column:1/-1;}
+.card{background:#fff;border:1px solid #dadce0;border-radius:8px;padding:15px 19px;}
+.ct{font-size:13px;font-weight:500;margin-bottom:2px;}
+.cs{font-size:11px;color:#5f6368;margin-bottom:11px;}
+.leg{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;}
+.li{display:flex;align-items:center;gap:5px;font-size:11px;color:#5f6368;}
+.ld{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.ls{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:3px;}
+th{background:#f1f3f4;color:#5f6368;font-weight:500;padding:6px 8px;border-bottom:1px solid #dadce0;font-size:10px;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;}
+td{padding:6px 8px;border-bottom:1px solid #f1f3f4;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.g{color:#1e8e3e;font-weight:600;}.r{color:#d93025;font-weight:600;}.y{color:#e37400;font-weight:600;}
+.chip{display:inline-block;padding:1px 6px;border-radius:8px;font-size:9px;}
+.ca{background:#fce8e6;color:#c5221f;}.cv2{background:#fef7e0;color:#e37400;}
+.cd2{background:#e8f0fe;color:#1967d2;}.ce{background:#f1f3f4;color:#5f6368;}
+.cf{background:#f3e8fd;color:#7b1fa2;}
+</style>
+</head>
+<body>
+<h1 id="t1"></h1>
+<p class="sub" id="t2"></p>
+<div class="cards" id="cards"></div>
+<div class="grid">
+  <div class="card full">
+    <div class="ct">Accuracy by Iteration</div>
+    <div class="cs">By-action (VLM only) · E2E action · E2E sequence accuracy · dashed = target</div>
+    <canvas id="c1" height="70"></canvas>
+    <div class="leg">
+      <div class="li"><div class="ld" style="background:#1a73e8"></div>By-action</div>
+      <div class="li"><div class="ld" style="background:#34a853"></div>E2E action</div>
+      <div class="li"><div class="ld" style="background:#ea4335"></div>E2E seq</div>
+      <div class="li" style="margin-left:auto"><div class="ls" style="background:#fbbc04"></div>Target</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ct">DDM F1 &amp; Score Threshold</div>
+    <div class="cs">Temporal segmentation quality · dark green = post-retrain</div>
+    <canvas id="c2" height="195"></canvas>
+  </div>
+  <div class="card">
+    <div class="ct">E2E Error Breakdown</div>
+    <div class="cs">Duplicate / Wrong / Missing action counts</div>
+    <canvas id="c3" height="195"></canvas>
+    <div class="leg">
+      <div class="li"><div class="ls" style="background:#ff6d00"></div>Dup</div>
+      <div class="li"><div class="ls" style="background:#ea4335"></div>Wrong</div>
+      <div class="li"><div class="ls" style="background:#9aa0a6"></div>Miss</div>
+    </div>
+  </div>
+  <div class="card full">
+    <div class="ct">Change Type &amp; E2E Action per Iteration</div>
+    <div class="cs">Bar height = E2E action accuracy · Color = change type · ★ = key fix iter</div>
+    <canvas id="c4" height="55"></canvas>
+    <div class="leg">
+      <div class="li"><div class="ls" style="background:#9aa0a6"></div>First run</div>
+      <div class="li"><div class="ls" style="background:#ea4335"></div>Augment+VLM (Phase I)</div>
+      <div class="li"><div class="ls" style="background:#1a73e8"></div>DDM retrain</div>
+      <div class="li"><div class="ls" style="background:#c8d0da;border:1px solid #bbb"></div>Eval-only</div>
+      <div class="li"><div class="ls" style="background:#fbbc04"></div>VLM/fix ★ (Phase II)</div>
+      <div class="li"><div class="ls" style="background:#34a853"></div>Augment+VLM (Phase III)</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ct">Training Samples per QA Type</div>
+    <div class="cs">Stacked sample counts per training iteration (eval-only iters hidden)</div>
+    <canvas id="c5" height="195"></canvas>
+    <div class="leg">
+      <div class="li"><div class="ls" style="background:#1a73e8"></div>BCQ</div>
+      <div class="li"><div class="ls" style="background:#34a853"></div>MCQ</div>
+      <div class="li"><div class="ls" style="background:#fbbc04"></div>GoldenGQA</div>
+      <div class="li"><div class="ls" style="background:#ff6d00"></div>GQAs</div>
+      <div class="li"><div class="ls" style="background:#ea4335"></div>DMCQ</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="ct">Total Training Samples</div>
+    <div class="cs">Total QA samples per training iteration · dashed = previous best</div>
+    <canvas id="c6" height="195"></canvas>
+  </div>
+  <div class="card full">
+    <div class="ct">Iteration Summary</div>
+    <div class="cs">D/W/M = Dup/Wrong/Miss · ph = I/II/III · auto-refreshes every 60s</div>
+    <table id="tbl"></table>
+  </div>
+</div>
+
+<script>
+/* ITER_DATA */
+</script>
+<script>
+const its=RUN.iters, last=its[its.length-1];
+const bestSeq=Math.max(...its.map(i=>i.sq));
+const lrFix=its.some(i=>i.ph==='II'||i.ph==='III');
+const labels=its.map(i=>i.n);
+
+// Title
+document.getElementById('t1').textContent=`${RUN.dataset} — Fine-tuning Progress`;
+document.getElementById('t2').textContent=`run_id: ${RUN.id} · ${its.length} iterations · Target: seq_accuracy ≥ ${RUN.target}% · auto-refreshes every 60s`;
+
+// Cards
+const nP1=its.filter(i=>i.ph==='I').length;
+document.getElementById('cards').innerHTML=[
+  {l:'Iters complete',v:its.length,d:`${nP1} in Phase I`,cls:nP1>=8?'danger':''},
+  {l:'Best seq_acc',v:bestSeq+'%',d:`Target: ${RUN.target}%`,cls:bestSeq>=RUN.target?'ok':bestSeq>0?'warn':''},
+  {l:'E2E action (latest)',v:last.ea.toFixed(1)+'%',d:`iter ${last.n}`,cls:last.ea>=90?'ok':''},
+  {l:'LR fix applied',v:lrFix?'Yes ✓':'No',d:lrFix?'Phase II/III active':'Still on default LR — check',cls:lrFix?'ok':'danger'},
+].map(c=>`<div class="c ${c.cls}"><div class="cl">${c.l}</div><div class="cv">${c.v}</div><div class="cd">${c.d}</div></div>`).join('');
+
+// Phase background plugin
+const phPlugin={id:'ph',beforeDraw(chart){
+  const{ctx,chartArea,scales}=chart;
+  if(!chartArea||!scales.x)return;
+  const x=scales.x,top=chartArea.top,h=chartArea.height;
+  const p={I:[],II:[],III:[]};
+  its.forEach((it,idx)=>{if(p[it.ph])p[it.ph].push(idx);});
+  const band=(arr,col)=>{if(!arr.length)return;const f=arr[0]-.5,t=arr[arr.length-1]+.5;ctx.fillStyle=col;ctx.fillRect(x.getPixelForValue(f),top,x.getPixelForValue(t)-x.getPixelForValue(f),h);};
+  band(p.I,'rgba(234,67,53,0.04)');band(p.II,'rgba(251,188,4,0.10)');band(p.III,'rgba(52,168,83,0.07)');
+  if(p.II.length){ctx.fillStyle='rgba(0,0,0,0.25)';ctx.font='10px Arial';ctx.textAlign='center';ctx.fillText('★',x.getPixelForValue(p.II[0]),top+12);}
+}};
+
+const sx=(mn,mx)=>({min:mn,max:mx,ticks:{color:'#5f6368',font:{size:10}},grid:{color:'#f1f3f4'},border:{color:'#dadce0'}});
+const sxc=()=>({ticks:{color:'#5f6368',font:{size:10}},grid:{display:false},border:{color:'#dadce0'}});
+
+// Chart 1: Accuracy
+new Chart(document.getElementById('c1'),{type:'line',plugins:[phPlugin],
+  data:{labels,datasets:[
+    {label:'By-action',data:its.map(i=>i.ba),borderColor:'#1a73e8',pointBackgroundColor:'#1a73e8',borderWidth:2.5,pointRadius:5,tension:.25,spanGaps:false,fill:false},
+    {label:'E2E action',data:its.map(i=>i.ea),borderColor:'#34a853',pointBackgroundColor:'#34a853',borderWidth:2.5,pointRadius:5,tension:.25,fill:false},
+    {label:'E2E seq',data:its.map(i=>i.sq),borderColor:'#ea4335',pointBackgroundColor:'#ea4335',borderWidth:3,pointRadius:7,pointStyle:'rectRot',tension:.25,fill:false},
+    {label:'Target',data:its.map(()=>RUN.target),borderColor:'#fbbc04',borderDash:[6,4],pointRadius:0,borderWidth:1.5,fill:false},
+  ]},
+  options:{responsive:true,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y!=null?c.parsed.y.toFixed(1)+'%':'—'}`}}},
+    scales:{y:{...sx(-5,108),ticks:{...sx(-5,108).ticks,callback:v=>v+'%'}},x:sxc()}}
+});
+
+// Chart 2: DDM F1 + threshold
+new Chart(document.getElementById('c2'),{type:'bar',
+  data:{labels,datasets:[
+    {label:'DDM F1',data:its.map(i=>i.f1),backgroundColor:its.map(i=>i.f1>=0.92?'#0d652d':'#1a73e8'),borderRadius:4,borderSkipped:false,yAxisID:'y'},
+    {label:'Threshold',data:its.map(i=>i.th),type:'line',borderColor:'#ea4335',pointBackgroundColor:'#ea4335',borderWidth:2,pointRadius:4,tension:.3,yAxisID:'y2'},
+  ]},
+  options:{responsive:true,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.datasetIndex===0?`F1: ${c.parsed.y.toFixed(4)}`:`thr: ${c.parsed.y.toFixed(2)}`}}},
+    scales:{y:{min:0.80,max:0.98,position:'left',...sx(0.80,0.98)},y2:{min:0.2,max:0.72,position:'right',ticks:{callback:v=>v.toFixed(2),color:'#ea4335',font:{size:10}},grid:{display:false},border:{color:'#ea4335',dash:[4,3]}},x:sxc()}}
+});
+
+// Chart 3: Errors
+new Chart(document.getElementById('c3'),{type:'bar',
+  data:{labels,datasets:[
+    {label:'Dup',data:its.map(i=>i.d),backgroundColor:'#ff6d00',borderRadius:2},
+    {label:'Wrong',data:its.map(i=>i.w),backgroundColor:'#ea4335',borderRadius:2},
+    {label:'Miss',data:its.map(i=>i.m),backgroundColor:'#9aa0a6',borderRadius:2},
+  ]},
+  options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}`}}},
+    scales:{x:{stacked:true,...sxc()},y:{stacked:true,...sx(0,null)}}}
+});
+
+// Chart 4: Change type
+function chgColor(it){if(it.t==='ddm')return'#1a73e8';if(it.t==='eval')return'#c8d0da';if(it.t==='first')return'#9aa0a6';if(it.ph==='III')return'#34a853';if(it.ph==='II')return'#fbbc04';return'#ea4335';}
+new Chart(document.getElementById('c4'),{type:'bar',plugins:[phPlugin],
+  data:{labels,datasets:[{label:'E2E action',data:its.map(i=>i.ea),backgroundColor:its.map(chgColor),borderRadius:4,borderSkipped:false}]},
+  options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`E2E action: ${c.parsed.y.toFixed(1)}%`}}},
+    scales:{y:{...sx(0,110),ticks:{...sx(0,110).ticks,callback:v=>v+'%'}},x:sxc()}}
+});
+
+// Chart 5: Training samples per QA type (training iters only)
+const trainIts=its.filter(i=>i.t!=='eval');
+const trainLabels=trainIts.map(i=>i.n);
+function qaVal(it,k){return it.qas&&it.qas[k]!=null?it.qas[k]:0;}
+new Chart(document.getElementById('c5'),{type:'bar',
+  data:{labels:trainLabels,datasets:[
+    {label:'BCQ',  data:trainIts.map(i=>qaVal(i,'bcq')),  backgroundColor:'#1a73e8',borderRadius:2},
+    {label:'MCQ',  data:trainIts.map(i=>qaVal(i,'mcq')),  backgroundColor:'#34a853',borderRadius:2},
+    {label:'GoldenGQA',data:trainIts.map(i=>qaVal(i,'gqa')),backgroundColor:'#fbbc04',borderRadius:2},
+    {label:'GQAs', data:trainIts.map(i=>qaVal(i,'gqas')), backgroundColor:'#ff6d00',borderRadius:2},
+    {label:'DMCQ', data:trainIts.map(i=>qaVal(i,'dmcq')), backgroundColor:'#ea4335',borderRadius:2},
+  ]},
+  options:{responsive:true,plugins:{legend:{display:false},
+    tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y}`}}},
+    scales:{x:{stacked:true,...sxc()},y:{stacked:true,...sx(0,null)}}}
+});
+
+// Chart 6: Total samples line
+const prevBest=trainIts.map((_,i)=>i===0?null:Math.max(...trainIts.slice(0,i).map(it=>it.samp||0)));
+new Chart(document.getElementById('c6'),{type:'bar',
+  data:{labels:trainLabels,datasets:[
+    {label:'Total samples',data:trainIts.map(i=>i.samp||0),backgroundColor:'#e8f0fe',borderColor:'#1a73e8',borderWidth:2,borderRadius:4,borderSkipped:false},
+    {label:'Previous best',data:prevBest,type:'line',borderColor:'#fbbc04',borderDash:[5,4],pointRadius:0,borderWidth:1.5,fill:false},
+  ]},
+  options:{responsive:true,interaction:{mode:'index',intersect:false},
+    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.datasetIndex===0?`Total: ${c.parsed.y}`:`Prev best: ${c.parsed.y||'—'}`}}},
+    scales:{y:{...sx(0,null),ticks:{...sx(0,null).ticks}},x:sxc()}}
+});
+
+// Table
+const cm={augVLM:'ca',vlm:'cv2',ddm:'cd2',eval:'ce',first:'cf'};
+const pc={I:'color:#d93025',II:'color:#e37400',III:'color:#1e8e3e'};
+document.getElementById('tbl').innerHTML=
+  `<tr><th>Iter</th><th>Ph</th><th>Type</th><th>By-act</th><th>E2E act</th><th>seq%</th><th>F1</th><th>thr</th><th>D/W/M</th><th>LR</th><th>Change</th></tr>`+
+  its.map(it=>{
+    const sc=it.sq>=RUN.target?'g':it.sq>0?'y':'r';
+    const rb=it.ph==='II'?'#fffce6':it.ph==='III'?'#f6faf7':'';
+    return`<tr style="background:${rb}"><td><strong>${it.n}</strong></td><td><span style="font-size:9px;font-weight:600;${pc[it.ph]||''}">${it.ph}</span></td><td><span class="chip ${cm[it.t]||'ce'}">${it.t}</span></td><td>${it.ba!=null?it.ba.toFixed(1)+'%':'—'}</td><td>${it.ea.toFixed(1)}%</td><td class="${sc}">${it.sq}%</td><td>${it.f1.toFixed(3)}</td><td>${it.th.toFixed(2)}</td><td>${it.d}/${it.w}/${it.m}</td><td style="font-size:10px">${it.lr||'—'}</td><td>${it.note||''}</td></tr>`;
+  }).join('');
+</script>
+</body>
+</html>

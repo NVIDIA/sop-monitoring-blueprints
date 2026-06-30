@@ -1,0 +1,26 @@
+Question:
+<video>
+Focus on the lower chassis. A tube is being removed. Which tube is being disconnected?
+(A) The bottom tube (closer to the base)
+(B) The upper tube (closer to the top of the lower section)
+===
+Answer:
+(A)
+===
+Question:
+<video>
+In the lower chassis, which tube removal action is being performed?
+(A) Remove the bottom tube from the lower chassis
+(B) Remove the upper tube from the lower chassis
+===
+Answer:
+(A)
+===
+Question:
+<video>
+Observe the tube being removed from the lower chassis area. Which position is it?
+(A) Bottom position - closer to the base of the chassis
+(B) Upper position - closer to the top of the lower section
+===
+Answer:
+(A)

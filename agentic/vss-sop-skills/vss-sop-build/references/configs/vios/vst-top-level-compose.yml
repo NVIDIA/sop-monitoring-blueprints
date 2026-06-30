@@ -1,0 +1,4 @@
+# deployments/vst/compose.yml — top-level VST entry point.
+# Replaces the upstream `./vst/developer/vst/docker-compose.yaml` reference.
+include:
+  - path: sop/vst/docker-compose.yaml

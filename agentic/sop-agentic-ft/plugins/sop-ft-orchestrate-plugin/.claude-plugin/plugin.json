@@ -1,0 +1,6 @@
+{
+  "name": "sop-ft-orchestrate-plugin",
+  "description": "Autonomous orchestrator for the full SOP fine-tuning pipeline: from annotated dataset to production-ready DDM + VLM models. Runs the complete Import → Augment → DDM Train → VLM Train → Evaluate → RCA loop, interprets RCA results, applies fixes, and iterates until success criteria are met. Uses the BP evaluation-ms HTTP API directly via the sop-evaluation-plugin.",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0 AND Apache-2.0"
+}

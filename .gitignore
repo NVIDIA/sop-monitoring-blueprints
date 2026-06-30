@@ -1,0 +1,10 @@
+agentic/vss-sop-skills/.secret
+.secret/
+# Python files
+**/__pycache__/
+
+# Basler Pylon SDK: commercial, license-gated download. Keep the binaries/ dir
+# (so the Docker build's bind mount resolves) but never commit the SDK tarball.
+microservices/sop-inference-bp/binaries/*
+!microservices/sop-inference-bp/binaries/.gitkeep
+

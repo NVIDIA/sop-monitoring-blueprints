@@ -1,0 +1,7 @@
+include:
+  - path: ./nim/compose.yml
+  - path: ./foundational/mdx-foundational.yml
+  - path: ./vst/compose.yml
+  - path: ./agents/compose.yml
+  - path: ./ds/compose.yml
+  - path: ./sop/compose.yml

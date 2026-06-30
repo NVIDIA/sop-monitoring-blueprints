@@ -1,0 +1,65 @@
+{
+  "skill_name": "vss-sop-build",
+  "evals": [
+    {
+      "id": 1,
+      "name": "Check standard execution",
+      "prompt": "Run the standard flow for vss-sop-build",
+      "expected_output": "The skill runs the standard flow for vss-sop-build successfully and produces expected outputs.",
+      "assertions": [
+        {
+          "type": "contains",
+          "text": "build"
+        },
+        {
+          "type": "contains",
+          "text": "vss"
+        },
+        {
+          "type": "not_contains_pattern",
+          "text": "password|credential|token|secret"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Check custom options and parameters",
+      "prompt": "Run vss-sop-build with custom parameters and options",
+      "expected_output": "The skill applies the custom parameters and executes the vss-sop-build workflow accordingly.",
+      "assertions": [
+        {
+          "type": "contains",
+          "text": "sop"
+        },
+        {
+          "type": "contains",
+          "text": "compile"
+        },
+        {
+          "type": "not_contains_pattern",
+          "text": "password|credential|token|secret"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Check error/invalid input negative case",
+      "prompt": "Run vss-sop-build with invalid input parameters to trigger expected error handling",
+      "expected_output": "The skill gracefully rejects the invalid input or reports a clear error message.",
+      "assertions": [
+        {
+          "type": "contains",
+          "text": "error"
+        },
+        {
+          "type": "contains",
+          "text": "invalid"
+        },
+        {
+          "type": "not_contains_pattern",
+          "text": "password|credential|token|secret"
+        }
+      ]
+    }
+  ]
+}

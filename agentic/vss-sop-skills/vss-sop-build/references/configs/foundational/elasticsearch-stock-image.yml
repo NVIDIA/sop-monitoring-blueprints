@@ -1,0 +1,4 @@
+# Step 1c — Replace the entire upstream `build:` block on the
+# `elasticsearch` service with the stock image.
+elasticsearch:
+  image: docker.elastic.co/elasticsearch/elasticsearch:9.3.0

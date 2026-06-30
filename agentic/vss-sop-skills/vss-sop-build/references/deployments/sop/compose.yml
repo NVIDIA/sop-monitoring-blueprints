@@ -1,0 +1,3 @@
+include:
+  - path: ./sop-app/compose.yml
+  - path: ../ds/ds-sop/ds-sop-docker-compose.yml

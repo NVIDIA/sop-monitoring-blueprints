@@ -1,0 +1,6 @@
+{
+  "name": "sop-data-augmentation-plugin",
+  "description": "Configure, trigger, monitor, and troubleshoot the SOP data and QA augmentation pipeline for VLM training data generation",
+  "version": "1.0.0",
+  "license": "CC-BY-4.0 AND Apache-2.0"
+}
