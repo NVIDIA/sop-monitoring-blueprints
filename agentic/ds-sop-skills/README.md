@@ -78,6 +78,8 @@ DDM_MODEL_PATH="/models/ddm/checkpoint.pth.tar"
 MODEL_ROOT_DIR=/models
 ACTION_CONFIG_PATH=/opt/sop/configs/actions.json
 VLM_PROMPT_PATH=/opt/sop/configs/vlm_prompts.txt
+VLM_FPS=8.0
+VLM_MAX_PIXELS=81920
 HOST_CACHE=$HOME/.cache/ds_sop
 TEST_VIDEO_PATH=/path/to/test_video_whole_sop_h264.mp4
 USER_ID=0
@@ -96,7 +98,7 @@ using max_length_sec=2.0. Follow @deepstream-sop/skill.md for rules.
 Additional env settings:
 ACTION_CONFIG_PATH=/path/to/configs/assy17_actions.json
 VLM_PROMPT_PATH=/path/to/configs/assy17_vlm_prompts.txt
-VLM_FPS=10.0
+VLM_FPS=8.0
 ```
 
 ### 4. Video File Input Latency Measurement
