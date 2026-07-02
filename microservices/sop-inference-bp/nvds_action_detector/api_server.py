@@ -452,10 +452,14 @@ async def ds_sop_generate_chunks(request: ChatCompletionRequest, raw_request: Re
                         detail="Only one video file is supported, but got multiple video files in a request.",
                     )
 
-                video_file_path = content.file_id
-                video_file_path = os.path.join(STORAGE_DIR, video_file_path)
+                file_id = content.file_id
+                # Gate on metadata like get_file_content so only /v1/files-minted ids resolve (prevents file_id path traversal).
+                async with global_metadata_lock:
+                    if global_metadata.get(file_id) is None:
+                        raise HTTPException(status_code=404, detail=f"Video file {file_id} not found")
+                video_file_path = os.path.join(STORAGE_DIR, file_id)
                 if not os.path.exists(video_file_path):
-                    raise HTTPException(status_code=404, detail=f"Video file {video_file_path} not found")
+                    raise HTTPException(status_code=404, detail=f"Video file {file_id} not found")
             elif isinstance(content, VideoURLContent):
                 if video_file_path:
                     raise HTTPException(

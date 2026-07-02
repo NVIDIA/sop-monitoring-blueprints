@@ -5,6 +5,7 @@
 - [Overview](#overview)
 - [When To Use Which Service](#when-to-use-which-service)
 - [End-to-End Workflow](#end-to-end-workflow)
+- [Extract the Cosmos3-Nano Reasoner](#extract-the-cosmos3-nano-reasoner-vlm-backbone)
 - [Agentic Quick Start](#agentic-quick-start)
 - [VSS Example Application](#vss-example-application)
 - [Usage](#usage)
@@ -48,10 +49,26 @@ These services are designed to work together: train a model with the Training Se
 
 1. Annotate videos by marking action start/end timestamps (Training).
 2. Generate QA pairs (GQA/BCQ/MCQ) from annotations (Training).
-3. Fine-tune a VLM (e.g., Cosmos-Reason1) on generated data (Training).
+3. Fine-tune a VLM (e.g., Cosmos-Reason) on generated data (Training).
 4. Fine-tune a Temporal Segment Model on the annotated data (Training).
 5. Deploy the trained model into the Inference Service (Inference).
 6. Conduct end-to-end SOP monitoring and analyze SOP compliance (Inference).
+
+
+## Extract the Cosmos3-Nano Reasoner (VLM backbone)
+
+The SOP monitoring service can also support Cosmos3-Nano reasoner fine-tuning.
+To fine-tune the Cosmos3-Nano reasoner for SOP monitoring, first extract it from Cosmos3 Nano checkpoint into Hugging Face safetensor checkpoint:
+
+1. Set up the Cosmos-Framework environment: clone [NVIDIA/cosmos-framework](https://github.com/NVIDIA/cosmos-framework/tree/main) and follow its [setup guide](https://github.com/NVIDIA/cosmos-framework/blob/main/docs/setup.md).
+2. Extract the reasoner (language + vision tower) with [`convert_model_to_vlm_safetensors.py`](https://github.com/NVIDIA/cosmos-framework/blob/main/cosmos_framework/scripts/convert_model_to_vlm_safetensors.py). The `Cosmos3-Nano` weights ([nvidia/Cosmos3-Nano](https://huggingface.co/nvidia/Cosmos3-Nano)) are downloaded automatically:
+
+   ```bash
+   python -m cosmos_framework.scripts.convert_model_to_vlm_safetensors \
+       --checkpoint-path Cosmos3-Nano \
+       -o examples/checkpoints/Cosmos3-Nano-VLM
+   ```
+3. Use the extracted checkpoint as the VLM backbone for fine-tuning — see the [SOP Training Service README](microservices/sop-training-bp/README.md).
 
 
 ## Agentic Quick Start
