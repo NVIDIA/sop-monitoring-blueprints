@@ -44,6 +44,19 @@ except ImportError:
     PYAV_AVAILABLE = False
 
 
+def chunk_description(chunk):
+    """Return a chunk's description text for either annotation schema.
+
+    Single-operator annotations carry one "description" string per chunk;
+    multi-operator annotations carry a "descriptions" list holding one entry per
+    concurrent action. Concurrent entries are joined with " AND " to match the
+    combined description the annotation backend writes elsewhere.
+    """
+    if "description" in chunk:
+        return chunk["description"]
+    return " AND ".join(chunk.get("descriptions", []))
+
+
 class PyAVVideoDecoder:
     """Wrapper class for PyAV to match torchcodec's VideoDecoder interface"""
     def __init__(self, video_path):
@@ -371,7 +384,7 @@ class DDMDataset(Dataset):
             self.video_info[k].update({"fps": fps, "duration": duration, "vlen": vlen})
             boundary_list = []
             # content.pop() # Exclude Final Segment
-            content = [ct for ct in content if "final segment" not in ct["description"].lower()]
+            content = [ct for ct in content if "final segment" not in chunk_description(ct).lower()]
             for s_sample, e_sample in zip(content[:-1], content[1:]):
                 s_time = s_sample["end_timestamp"]
                 e_time = e_sample["start_timestamp"]

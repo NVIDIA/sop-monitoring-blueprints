@@ -51,6 +51,19 @@ DEFAULT_MEAN = [0.485, 0.456, 0.406]
 DEFAULT_STD = [0.229, 0.224, 0.225]
 
 
+def chunk_description(chunk):
+    """Return a chunk's description text for either annotation schema.
+
+    Single-operator annotations carry one "description" string per chunk;
+    multi-operator annotations carry a "descriptions" list holding one entry per
+    concurrent action. Concurrent entries are joined with " AND " to match the
+    combined description the annotation backend writes elsewhere.
+    """
+    if "description" in chunk:
+        return chunk["description"]
+    return " AND ".join(chunk.get("descriptions", []))
+
+
 class DecordStreamingReader:
     """
     High-performance Video Reader using Decord.
@@ -259,7 +272,7 @@ class DDMValStreamingDataset(IterableDataset):
 
                     # Handle Labels (remains unchanged)
                     boundary_list = []
-                    content_ = [ct for ct in content if ct.get("description") != "Final Segment"]
+                    content_ = [ct for ct in content if chunk_description(ct) != "Final Segment"]
                     for s_sample, e_sample in zip(content_[:-1], content_[1:]):
                         s_time = s_sample.get("end_timestamp", 0)
                         e_time = e_sample.get("start_timestamp", 0)

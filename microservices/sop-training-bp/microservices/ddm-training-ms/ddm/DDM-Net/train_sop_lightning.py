@@ -56,6 +56,19 @@ from pl_ddm_datamodule import DDMDataModule
 from config.config import get_config_with_cli, save_config, validate_config, load_config_file
 
 
+def chunk_description(chunk):
+    """Return a chunk's description text for either annotation schema.
+
+    Single-operator annotations carry one "description" string per chunk;
+    multi-operator annotations carry a "descriptions" list holding one entry per
+    concurrent action. Concurrent entries are joined with " AND " to match the
+    combined description the annotation backend writes elsewhere.
+    """
+    if "description" in chunk:
+        return chunk["description"]
+    return " AND ".join(chunk.get("descriptions", []))
+
+
 class SOPLightningModule(L.LightningModule):
     """Lightning Module for SOP (Sequence of Procedures) boundary detection."""
 
@@ -454,7 +467,7 @@ class SOPLightningModule(L.LightningModule):
         for vid, content in val_anno.items():
             if vid in dataset.video_info:
                 boundary_list = []
-                content = [ct for ct in content if ct["description"] != "Final Segment"]
+                content = [ct for ct in content if chunk_description(ct) != "Final Segment"]
                 for s_sample, e_sample in zip(content[:-1], content[1:]):
                     s_time = s_sample["end_timestamp"]
                     e_time = e_sample["start_timestamp"]
