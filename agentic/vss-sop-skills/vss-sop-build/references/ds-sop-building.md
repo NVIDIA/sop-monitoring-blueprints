@@ -60,11 +60,11 @@ It performs:
 
 ## Post-Build Verification & Auto-Fix
 
-Run the 8 checks **in order** against the built `ds-sop:1.0.0` image. Stop and fix before moving on.
+Run the 7 checks **in order** against the built `ds-sop:1.0.0` image. Stop and fix before moving on.
 
 Two scripts cover the full workflow:
 
-- `./scripts/ds-sop/post_build_checks.sh` — runs all 8 checks sequentially. Use `--container` to launch a fresh container automatically (`docker run --rm --gpus all -v ...:/tmp/post_build_checks.sh:ro --entrypoint bash ds-sop:1.0.0 /tmp/post_build_checks.sh`); otherwise run inside an existing container shell.
+- `./scripts/ds-sop/post_build_checks.sh` — runs all 7 checks sequentially. Use `--container` to launch a fresh container automatically (`docker run --rm --gpus all -v ...:/tmp/post_build_checks.sh:ro --entrypoint bash ds-sop:1.0.0 /tmp/post_build_checks.sh`); otherwise run inside an existing container shell.
 - `./scripts/ds-sop/apply_fixes.sh [check2|check3|check4|check5|all]` — applies remediation for the 4 checks that have automatable fixes. Run **inside** the container; after fixes apply cleanly, port the changes back into `docker/Docker.build` and rebuild.
 
 To enter a container shell manually for ad-hoc inspection:
@@ -82,11 +82,10 @@ To enter a container shell manually for ad-hoc inspection:
 | 5 | Shared library deps satisfied | No `not found` in `ldd` of `gstreamer-1.0/libgst*.so` (codec plugins fail silently otherwise) | `apply_fixes.sh check5` (reinstall `libvpx9 libzvbi0t64 libmp3lame0 libx265-199 libunibreak5 libmpg123-0t64`) |
 | 6 | `RTSPStreamingServer` instantiable | End-to-end RTSP server attaches to a GLib MainContext | manual: re-check Checks 1 and 4 (typically missing `GstRtspServer` typelib) |
 | 7 | Qwen3-VL detection wired | `_is_qwen3vl` and `return_video_metadata` present in `VLLMInference` source | manual: regenerate with ds-sop-skills (the generated `vllm_inference.py` should already wire this) |
-| 8 | Chunking = DDM-Net only | `UniformChunkingOptions` removed from `ChunkingOptions` union | manual: regenerate with ds-sop-skills (the generated `api_types.py` should already exclude it) |
 
-All 8 must pass. After auto-fixing inside the container, update `docker/Docker.build` and rebuild the image. If checks 7–8 fail, the fix lives in the **ds-sop-skills** generation (not in `vss-sop-build`) — regenerate `ds_sop_microservice`.
+All 7 must pass. After auto-fixing inside the container, update `docker/Docker.build` and rebuild the image. If check 7 fails, the fix lives in the **ds-sop-skills** generation (not in `vss-sop-build`) — regenerate `ds_sop_microservice`.
 
-> Note: Checks 1–6 are identical to the RTSP component checks in `verify_rtsp_components.py` (the 6-check script used by the vss-sop-deploy flow — see [`build_ds_sop_image.md`](../../../vss-sop-deploy/references/build_ds_sop_image.md)). `post_build_checks.sh` adds Checks 7–8 to also validate the Qwen3-VL and chunking behavior, for 8 total. All of these now validate the **generated + built** image rather than a downstream patch.
+> Note: Checks 1–6 are identical to the RTSP component checks in `verify_rtsp_components.py` (the 6-check script used by the vss-sop-deploy flow — see [`build_ds_sop_image.md`](../../../vss-sop-deploy/references/build_ds_sop_image.md)). `post_build_checks.sh` adds Check 7 to also validate the Qwen3-VL behavior, for 7 total. All of these now validate the **generated + built** image rather than a downstream patch.
 
 ---
 

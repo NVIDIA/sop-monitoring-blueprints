@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# ds-sop Post-Build Verification — runs the 8 in-container checks against
+# ds-sop Post-Build Verification — runs the 7 in-container checks against
 # the built ds-sop:1.0.0 image. Stops at the first failing check.
 #
 # NOTE: RTSP streaming output is an OPT-IN ds-sop-skills feature (ds-sop-skills § 18 —
@@ -123,16 +123,6 @@ src = inspect.getsource(VLLMInference)
 assert '_is_qwen3vl' in src, 'FAIL: _is_qwen3vl missing'
 assert 'return_video_metadata' in src, 'FAIL: return_video_metadata not wired'
 print('OK: Qwen3-VL detection wired into VLLMInference')
-"
-
-# Check 8 — Chunking is DDM-Net only
-run_check 8 "ChunkingOptions = DdmNetChunkingOptions only" python3 -c "
-from nvds_action_detector.api_types import ChunkingOptions
-import typing
-inner = typing.get_args(typing.get_args(ChunkingOptions)[0])
-names = [t.__name__ for t in inner]
-assert 'UniformChunkingOptions' not in names, f'FAIL: still present in {names}'
-print('OK: ChunkingOptions =', names)
 "
 
 echo

@@ -66,7 +66,7 @@ The script will verify:
 5. No broken shared library dependencies exist in the plugins.
 6. `RTSPStreamingServer` can be instantiated and bound to a port.
 
-> Note: `verify_rtsp_components.py` covers the RTSP/GStreamer components only (these 6 checks). The vss-sop-build skill's `post_build_checks.sh` runs these same 6 checks **plus** 2 additional model-wiring checks (Qwen3-VL detection and DDM-Net-only chunking) for 8 total — see [`ds-sop-building.md`](../../vss-sop-build/references/ds-sop-building.md). Use either script; they share Checks 1–6.
+> Note: `verify_rtsp_components.py` covers the RTSP/GStreamer components only (these 6 checks). The vss-sop-build skill's `post_build_checks.sh` runs these same 6 checks **plus** 1 additional model-wiring check (Qwen3-VL detection) for 7 total — see [`ds-sop-building.md`](../../vss-sop-build/references/ds-sop-building.md). Use either script; they share Checks 1–6.
 
 ---
 
