@@ -33,3 +33,21 @@ Which step is the [SUBJECT] performing?
 "What is the [SUBJECT] doing?",
 "Which action is the [SUBJECT] performing?"
 ]
+
+CONCURRENT_QUESTION_TEMPLATE = [
+"""There are [STEP] possible steps for the SOP (Standard Operation Procedure) of the given video.
+What steps are the [SUBJECT] doing?
+""",
+"""There are [STEP] possible steps for the SOP (Standard Operation Procedure) of the given video.
+What steps do the [SUBJECT] take?
+""",
+"""There are [STEP] possible steps for the SOP (Standard Operation Procedure) of the given video.
+What are the [SUBJECT] doing?
+""",
+"""There are [STEP] possible steps for the SOP (Standard Operation Procedure) of the given video.
+Which steps are the [SUBJECT] performing?
+""",
+"What actions do the [SUBJECT] take?",
+"What are the [SUBJECT] doing?",
+"Which actions are the [SUBJECT] performing?"
+]

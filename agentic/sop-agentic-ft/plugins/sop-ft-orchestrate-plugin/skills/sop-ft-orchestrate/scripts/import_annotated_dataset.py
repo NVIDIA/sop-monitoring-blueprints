@@ -283,8 +283,8 @@ async def main():
             video_count += 1
 
             for ann in annotations:
-                action_index = ann["action"]
-                description = ann["description"]
+                action_index = ann["action"] if "action" in ann else (ann["actions"][0] if len(ann["actions"]) == 1 else None)
+                description = ann["description"] if "description" in ann else " AND ".join(ann["descriptions"])
                 chunk_name_json = ann["chunk_name"]
                 start_time = float(ann["start_timestamp"])
                 end_time = float(ann["end_timestamp"])

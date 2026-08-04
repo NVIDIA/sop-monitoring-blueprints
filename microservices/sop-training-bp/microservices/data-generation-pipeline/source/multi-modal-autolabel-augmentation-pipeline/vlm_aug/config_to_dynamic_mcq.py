@@ -27,7 +27,7 @@ from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 from pathlib import Path
 
-from .cfg.dmcq import QUESTION_TEMPLATE
+from .cfg.dmcq import QUESTION_TEMPLATE, CONCURRENT_QUESTION_TEMPLATE
 from .utils import const
 from .utils.annotation_template import dmcq_meta, llava_video
 from .utils.helper import (
@@ -63,6 +63,11 @@ def prepare_sample_choices(action_json):
     write_txt(os.path.join(config_root, const.CHOICES + ".txt"), choices)
 
     return config_root
+
+
+def _get_action_indices(video_path):
+    action_part = os.path.basename(video_path).split(const.VIDEO_ACTION_SEP)[0]
+    return [int(a) for a in action_part.split(const.CONCURRENT_ACTION_SEP)]
 
 
 def assemble_anns(
@@ -157,6 +162,135 @@ def assemble_anns(
     return qa_label
 
 
+def assemble_concurrent_anns(
+    video_name,
+    chunk_action_indices,
+    is_positive,
+    min_options,
+    max_options,
+    action_list,
+    non_sop_action_index,
+    confusion_map=None,
+    is_hard=False,
+    hard_mode="adjacent"):
+
+    # random pick a number between min_options and max_options
+    num_options = random.randint(min_options, max_options)
+
+    chunk_actions = [action_list[index] for index in chunk_action_indices]
+    combined_action = " ".join(chunk_actions)
+    non_sop_action = action_list[non_sop_action_index]
+
+    # each single action of a concurrent chunk is an incomplete (hence hard)
+    # distractor; add the union of adjacent / confusion targets of every action
+    hard_options = []
+    if is_hard:
+        hard_options = list(chunk_actions)
+        for action_index in chunk_action_indices:
+            if hard_mode == "adjacent":
+                if action_index == 0:
+                    targets = [action_list[action_index + 1]]
+                elif action_index == len(action_list) - 1:
+                    targets = [action_list[action_index - 1]]
+                else:
+                    targets = [action_list[action_index - 1], action_list[action_index + 1]]
+            elif hard_mode == "confusion":
+                targets = [action_list[index - 1] for index in confusion_map.get(action_index + 1, [])]
+            else:
+                targets = []
+            for target in targets:
+                if target not in hard_options:
+                    hard_options.append(target)
+        hard_options = [option for option in hard_options if option != non_sop_action][:num_options - 1]
+
+    if is_positive:
+        correct_option = combined_action
+        pos_or_neg = "hp" if len(hard_options) > 0 else "pos"
+    else:
+        correct_option = non_sop_action
+        pos_or_neg = "hn" if len(hard_options) > 0 else "neg"
+
+    # random distractors never include the chunk's own actions: as complete
+    # single actions they belong only in hard_options, mirroring how the
+    # single-operator path keeps the video's true action out of the pool
+    other_options = [
+        option for option in action_list
+        if option != correct_option and option not in hard_options and option not in chunk_actions
+    ]
+    num_random = max(0, num_options - 1 - len(hard_options))
+    other_options = random.sample(other_options, min(num_random, len(other_options)))
+    cur_options = hard_options + other_options + [correct_option]
+
+    random.shuffle(cur_options)
+    if non_sop_action in cur_options:
+        cur_options.remove(non_sop_action)
+        cur_options.append(non_sop_action)
+
+    correct_option_index = cur_options.index(correct_option)
+    cur_options = [f"({i+1}) {option}" for i, option in enumerate(cur_options)]
+    cur_options_str = "\n".join(cur_options)
+
+    question = random.choice(CONCURRENT_QUESTION_TEMPLATE).replace(const.STEP_TOKEN, str(len(cur_options))).replace(
+        const.SUBJECT_TOKEN, const.DEFAULT_SUBJECT_CONCURRENT
+    )
+    question = question + "\n" + cur_options_str
+
+    answer = f"({correct_option_index+1}) {correct_option}"
+
+    qa_label = copy.deepcopy(llava_video)
+    qa_label[const.CONV][0][const.VALUE] = question
+    qa_label[const.CONV][1][const.VALUE] = answer
+    qa_label[const.VIDEO] = f"videos/{video_name}"
+
+    qa_meta = copy.deepcopy(dmcq_meta)
+    qa_meta[const.GT_ACTION] = combined_action
+    qa_meta[const.POS_OR_NEG] = pos_or_neg
+    qa_meta[const.HARD_MODE] = hard_mode if pos_or_neg == "hp" or pos_or_neg == "hn" else ""
+    qa_meta[const.NUM_OPTIONS] = len(cur_options)
+    qa_label[const.META] = qa_meta
+
+    return qa_label
+
+
+def _assemble_sample(
+    video_name,
+    chunk_action_indices,
+    is_positive,
+    min_options,
+    max_options,
+    action_list,
+    non_sop_action_index,
+    confusion_map,
+    is_hard,
+    hard_mode,
+):
+    if len(chunk_action_indices) == 1:
+        return assemble_anns(
+            video_name=video_name,
+            action_index=chunk_action_indices[0],
+            is_positive=is_positive,
+            min_options=min_options,
+            max_options=max_options,
+            action_list=action_list,
+            non_sop_action_index=non_sop_action_index,
+            confusion_map=confusion_map,
+            is_hard=is_hard,
+            hard_mode=hard_mode,
+        )
+    return assemble_concurrent_anns(
+        video_name=video_name,
+        chunk_action_indices=chunk_action_indices,
+        is_positive=is_positive,
+        min_options=min_options,
+        max_options=max_options,
+        action_list=action_list,
+        non_sop_action_index=non_sop_action_index,
+        confusion_map=confusion_map,
+        is_hard=is_hard,
+        hard_mode=hard_mode,
+    )
+
+
 def process_chunk(
     video_root,
     video,
@@ -191,90 +325,58 @@ def process_chunk(
     filtered_all_videos = [
         vid
         for vid in all_videos
-        if int(os.path.basename(vid).split(const.VIDEO_ACTION_SEP)[0]) not in args.exclude_actions
+        if not any(idx in args.exclude_actions for idx in _get_action_indices(vid))
     ]
 
     video_out_root = os.path.join(output_root, video)
     create_dir(video_out_root)
 
-    # process chunks with multiple actions
-    for i, cur_video in enumerate(filtered_all_videos):
+    non_sop_action_index = non_sop_action - 1
+
+    for cur_video in filtered_all_videos:
         video_basename = os.path.basename(cur_video)
-        cur_action = int(os.path.basename(cur_video).split(const.VIDEO_ACTION_SEP)[0])
-        action_index = cur_action - 1
-        non_sop_action_index = non_sop_action - 1
-        logging.info(f"Processing video: {cur_video}, action index: {action_index}")
+        chunk_action_indices = [action - 1 for action in _get_action_indices(cur_video)]
+        logging.info(f"Processing video: {cur_video}, action indices: {chunk_action_indices}")
 
         # construct postive samples (with correct action option)
         for _ in range(num_pos):
-            annotation = assemble_anns(
-                video_name=video_basename,
-                action_index=action_index,
-                is_positive=True,
-                min_options=min_options,
-                max_options=max_options,
-                action_list=args.choices,
-                non_sop_action_index=non_sop_action_index,
-                confusion_map=confusion_map,
-                is_hard=False,
-                hard_mode=""
-            )
-            anns.append(annotation)
+            anns.append(_assemble_sample(
+                video_basename, chunk_action_indices, True,
+                min_options, max_options, args.choices, non_sop_action_index,
+                confusion_map, False, "",
+            ))
 
         # construct hard positive samples (with incorrect action option but similar action)
         for _ in range(num_hard_pos):
             for mode in hard_pos_mode:
-                annotation = assemble_anns(
-                video_name=video_basename,
-                action_index=action_index,
-                is_positive=True,
-                min_options=min_options,
-                max_options=max_options,
-                action_list=args.choices,
-                non_sop_action_index=non_sop_action_index,
-                confusion_map=confusion_map,
-                is_hard=True,
-                hard_mode=mode
-                )
-                anns.append(annotation)
+                anns.append(_assemble_sample(
+                    video_basename, chunk_action_indices, True,
+                    min_options, max_options, args.choices, non_sop_action_index,
+                    confusion_map, True, mode,
+                ))
 
         # construct negative samples (with incorrect action option)
         for _ in range(num_neg):
-            annotation = assemble_anns(
-                video_name=video_basename,
-                action_index=action_index,
-                is_positive=False,
-                min_options=min_options,
-                max_options=max_options,
-                action_list=args.choices,
-                non_sop_action_index=non_sop_action_index,
-                confusion_map=confusion_map,
-                is_hard=False,
-                hard_mode=""
-            )
-            anns.append(annotation)
+            anns.append(_assemble_sample(
+                video_basename, chunk_action_indices, False,
+                min_options, max_options, args.choices, non_sop_action_index,
+                confusion_map, False, "",
+            ))
 
         # construct hard negative samples (with incorrect action option but similar action)
         for _ in range(num_hard_neg):
             for mode in hard_neg_mode:
-                annotation = assemble_anns(
-                video_name=video_basename,
-                action_index=action_index,
-                is_positive=False,
-                min_options=min_options,
-                max_options=max_options,
-                action_list=args.choices,
-                non_sop_action_index=non_sop_action_index,
-                confusion_map=confusion_map,
-                is_hard=True,
-                hard_mode=mode
-            )
-                anns.append(annotation)
-        
+                anns.append(_assemble_sample(
+                    video_basename, chunk_action_indices, False,
+                    min_options, max_options, args.choices, non_sop_action_index,
+                    confusion_map, True, mode,
+                ))
+
         # copy video to output video root
         shutil.copyfile(cur_video, os.path.join(video_out_root, video_basename))
 
     return anns
+
 
 
 def process_video(args_tuple):
