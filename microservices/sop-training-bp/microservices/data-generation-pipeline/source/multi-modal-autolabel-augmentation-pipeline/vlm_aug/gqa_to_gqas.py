@@ -451,7 +451,7 @@ if __name__ == "__main__":
         default="",
         help="local LLM URL, if using nim on local machine, then it could be http://0.0.0.0:8000/v1",
     )
-    parser.add_argument("--llm", type=str, default="meta/llama-3.1-70b-instruct")
+    parser.add_argument("--llm", type=str, default="meta/llama-3.3-70b-instruct")
     parser.add_argument(
         "--api-key", type=str, default="", help="Nvidia API key, if using local LLM, then it must be empty"
     )

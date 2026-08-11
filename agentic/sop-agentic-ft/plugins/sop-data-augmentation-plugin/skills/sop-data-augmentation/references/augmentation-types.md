@@ -80,7 +80,7 @@ There are 7 augmentation types, executed sequentially in the order listed below.
 | `enable` | bool | `true` | Enable this stage |
 | `llm_type` | string | `"nvidia"` | LLM backend: `"nvidia"` (NIM API) or `"local"` (self-hosted vllm) |
 | `local_llm_url` | string | `""` | Local LLM endpoint URL (e.g., `"http://10.18.44.75:9000/v1"`). Required if `llm_type` is `"local"` |
-| `llm` | string | `"meta/llama-3.1-70b-instruct"` | Model name. For NVIDIA NIM: use NIM model ID. For local: use model name served by vllm |
+| `llm` | string | `"meta/llama-3.3-70b-instruct"` | Model name. For NVIDIA NIM: use NIM model ID. For local: use model name served by vllm |
 | `num_qa_llm` | int | `8` | Number of QA pairs the LLM generates per action |
 | `num_qa_per_chunk` | int | `2` | Number of QA pairs to sample from LLM output per video chunk |
 | `exclude_action` | string | `""` | Action indices to exclude (e.g., `"1_2"`) |

@@ -505,7 +505,7 @@ if __name__ == "__main__":
     # LLM args (reuse from gqa_to_gqas)
     parser.add_argument("--llm-type", type=str, default="nvidia", choices=["nvidia", "local"])
     parser.add_argument("--local-llm-url", type=str, default="")
-    parser.add_argument("--llm", type=str, default="meta/llama-3.1-70b-instruct")
+    parser.add_argument("--llm", type=str, default="meta/llama-3.3-70b-instruct")
     parser.add_argument("--api-key", type=str, default="")
     parser.add_argument("--enable-thinking", type=str, default="")
     # Data args

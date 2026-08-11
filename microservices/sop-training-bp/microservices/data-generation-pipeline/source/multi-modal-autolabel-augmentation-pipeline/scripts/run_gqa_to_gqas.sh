@@ -17,7 +17,7 @@
 export PYTHONPATH=.
 
 # Set default value
-LLM="meta/llama-3.1-8b-instruct"
+LLM="meta/llama-3.3-70b-instruct"
 NV_API_KEY=$API_KEY
 NUM_QA_LLM=5
 

@@ -68,7 +68,7 @@ video_root
 
 `Reference Command`:
 ```
-bash scripts/run_gqa_to_gqas.sh --llm meta/llama-3.1-70b-instruct \
+bash scripts/run_gqa_to_gqas.sh --llm meta/llama-3.3-70b-instruct \
                                 --api-key <NVIDIA NIM API KEY> \
                                 --sample-qa-root ./data/gqa_to_gqas \
                                 --action-json ./actions.json \
@@ -87,7 +87,7 @@ bash scripts/run_gqa_to_gqas.sh --llm meta/llama-3.1-70b-instruct \
 ```
 
 `Arguments Definition`:
-* `llm`: Nvidia NIM LLM model (For NV internal user, please use internal endpoint, ex: nvdev/meta/llama-3.1-70b-instruct)
+* `llm`: Nvidia NIM LLM model (For NV internal user, please use internal endpoint, ex: nvdev/meta/llama-3.3-70b-instruct)
 * `api-key`: Nvidia NIM api-key
 * `sample-qa-root`: sample golden qa files for llm to generate more qa pairs
 * `action-json`: actions json file that is used by labelling tool (only be effective when )

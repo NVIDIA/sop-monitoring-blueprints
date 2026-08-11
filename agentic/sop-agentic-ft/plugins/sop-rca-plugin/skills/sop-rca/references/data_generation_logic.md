@@ -123,7 +123,7 @@ what QA types to generate and their parameters.
   4. Supports both cloud LLM (Nvidia API) and local LLM endpoints
 - **Config sections:** `general_qa`, `golden_general_qa`
 - **Key params (GQA):**
-  - `llm`: LLM model name for paraphrase generation (default: "meta/llama-3.1-70b-instruct")
+  - `llm`: LLM model name for paraphrase generation (default: "meta/llama-3.3-70b-instruct")
   - `num_qa_llm`: Number of QA pairs to generate via LLM per action (default: 5)
   - `num_qa_per_chunk`: Number of QA pairs to sample per video chunk
   - `subject`: Who performs the action (default: "operator")

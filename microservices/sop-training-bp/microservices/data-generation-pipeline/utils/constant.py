@@ -37,7 +37,7 @@ STAGE_FRAME_DROP = "frame_drop"
 
 DEFAULT_VIDEO_EXTENSION = "mp4"
 DEFAULT_SUBJECT = "operator"
-DEFAULT_LLM = "meta/llama-3.1-70b-instruct"
+DEFAULT_LLM = "meta/llama-3.3-70b-instruct"
 
 AUGMENTATION_CONFIG_NAME = os.getenv("AUGMENTATION_CONFIG_NAME", "augment_config.yaml")
 LOG_FILE_NAME = os.getenv("LOG_FILE_NAME", "data_augmentation_log")
