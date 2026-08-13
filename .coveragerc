@@ -1,0 +1,22 @@
+# Coverage config for the monorepo test stage.
+# Paths in coverage.xml must be repo-root-relative so the sonar stage can map
+# them onto analyzed sources (see .gitlab-ci.yml).
+[run]
+relative_files = true
+branch = false
+
+omit =
+    **/tests/**
+    **/__pycache__/**
+    **/DDM-Net/**
+    **/tutorials/**
+    # Deployment-reference scaffolding copied into deployments/ at build time;
+    # not skill runtime logic and not unit-tested in CI.
+    **/vss-sop-skills/**/references/**
+
+[report]
+skip_empty = true
+show_missing = true
+
+[xml]
+output = coverage.xml
