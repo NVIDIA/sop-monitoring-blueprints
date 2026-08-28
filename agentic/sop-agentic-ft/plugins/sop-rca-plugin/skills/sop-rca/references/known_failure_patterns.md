@@ -22,12 +22,27 @@ Each pattern includes diagnostic criteria and common fixes. The listed fixes are
 - DDM `score_threshold` too high (default 0.6) — boundary signals in 0.3-0.5 range get filtered. Note: `score_threshold` is the boundary filtering parameter; `ddm_threshold` in `f1_*.json` is a different parameter used only for F1 metric calculation.
 - DDM model lacks sensitivity for certain action transitions (especially at video start/end)
 - Long idle periods before SOP cycles suppress DDM signal
+- **The dataset shape itself.** DDM learns boundaries from transition movement, so it needs
+  transitions that recur often enough and look alike enough to be learned. A long video in which
+  a few brief key-steps sit inside long stretches of non-SOP activity gives it very few boundary
+  examples, buried in continuous operator motion that looks much the same on either side. That
+  shape — long video, sparse and brief key-steps — is where DDM under-segmentation is expected
+  rather than surprising, and it is the shape the whole uniform-chunking fallback exists for.
+
+  **The inverse is the more useful diagnostic.** On a normally-paced dataset, where actions
+  follow one another and the transitions are the main thing happening on screen, DDM should
+  learn those transitions. If it is failing *there*, the cause is far more likely to be upstream
+  of the model: action definitions that do not correspond to a visible change, or annotation
+  boundaries placed inconsistently across videos, so the same transition is labelled at different
+  moments and DDM is being asked to learn a contradiction. Audit the action list and the
+  annotation consistency before retraining DDM or reaching for a VLM-side workaround.
 
 **Common Fixes:**
 1. Lower DDM `score_threshold` (e.g., from 0.6 to 0.5 or 0.45) — re-evaluate with the new threshold
 2. Increase `sequential_mcq.max_chunk_len` > 1 so VLM can handle multi-action chunks
 3. If DDM consistently fails for certain video segments, consider retraining DDM with more data
-4. **If val/F1 looks good but E2E sequence accuracy is still low:** do NOT immediately blame DDM. First compare val/F1 against the E2E `Temporal Segmentation F1` from `summary.txt`. If both are similar and high (gap < 0.1), DDM generalizes fine — the E2E drop is a VLM issue (Pattern 4 hallucination is common when duplicates are high). Only when val/F1 is much higher than E2E F1 (gap > 0.2) should you suspect DDM overfitting and enable image augmentation — see Pattern 10.
+4. **If DDM cannot be brought up and the pipeline falls back to uniform chunking** (`chunking_algorithm=uniform`), the VLM's problem changes shape: it was trained on exactly-trimmed action chunks but is now fed fixed-length sliding windows, a format it has never seen. Enable the `wmcq` augmentation stage, which cuts training clips with that same window geometry, and set its `window` to the evaluation window length. Action type: `augment-config-change`. This treats the mismatch, not the segmentation — reach for it only once DDM tuning and retraining are exhausted. It assumes long videos with sparse key-steps — the same shape that made DDM fail here, which is why the two go together. Check that the dataset has substantial non-SOP footage and that key-steps are spaced further apart than `window` minus a key-step's length; the stage warns if either does not hold. On a normally-paced dataset WMCQ is the wrong response, and a failing DDM points at the action definitions or annotation consistency instead (see Root Causes).
+5. **If val/F1 looks good but E2E sequence accuracy is still low:** do NOT immediately blame DDM. First compare val/F1 against the E2E `Temporal Segmentation F1` from `summary.txt`. If both are similar and high (gap < 0.1), DDM generalizes fine — the E2E drop is a VLM issue (Pattern 4 hallucination is common when duplicates are high). Only when val/F1 is much higher than E2E F1 (gap > 0.2) should you suspect DDM overfitting and enable image augmentation — see Pattern 10.
 
 ---
 
@@ -102,6 +117,10 @@ Each pattern includes diagnostic criteria and common fixes. The listed fixes are
 It causes errors when:
 - VLM predicts inconsistently across split chunks of the same action, e.g., action 1 split into 3 chunks but VLM predicts [1, X, 1] → after dedup this becomes [1, X, 1] with a spurious action inserted
 - VLM hallucinates a wrong SOP action for an extra chunk in a transition region (Pattern 4)
+
+---
+
+**If over-segmentation cannot be fixed and you fall back to uniform chunking,** see Pattern 1 fix 4: the VLM then needs `wmcq` so its training clips match the sliding-window geometry it is actually evaluated on.
 
 ---
 
@@ -385,5 +404,7 @@ Two different root causes can both produce model collapse, and they require diff
    - Consistently hurts DDM performance — avoid it
 
 4. **Combining augmentations on small datasets:** each augmentation independently increases sample difficulty; combining them makes training too hard with too little data. Test one at a time, then combine only if both help independently.
+
+5. **If augmentation does not close the gap and you switch to uniform chunking,** enable the `wmcq` augmentation stage so the VLM is trained on the same fixed-length window geometry it will be evaluated on — see Pattern 1 fix 4. Action type: `augment-config-change`.
 
 *Key insight:* RandomResize improves E2E most despite potentially lower val F1 — val/F1 alone is not a reliable proxy for E2E quality when training data is small. ColorJitter can raise test DDM F1 but may worsen E2E (sharper boundaries but slightly misaligned, confusing VLM). All-3 together is too aggressive for small datasets.

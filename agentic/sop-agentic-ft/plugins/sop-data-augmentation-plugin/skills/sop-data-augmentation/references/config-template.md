@@ -75,12 +75,41 @@ extra_negative:
   max_options: 6
   num_runs: 1
   generate_all_options: true
+
+# Window-Matched MCQ Config
+# Fixed-length windows cut from the SOURCE video (not the pre-cut chunks), matching the
+# geometry of a sliding-window evaluation. For poor DDM chunking / uniform chunking.
+# The defaults are the configuration our runs converged on.
+wmcq:
+  enable: false
+  exclude_action: ""
+  non_sop_action: 17         # 1-based index in actions.json; label for every negative window
+                             # (17 is a placeholder from another dataset)
+  window: 3.0                # MUST equal the evaluation sliding-window length
+  variants: 4                # windows cut per key-step
+  variants_per_action: ""    # per-action override, e.g. "2:8"
+  tile_long: true            # tile over-long key-steps instead of enlarging (avoids duration leak)
+  tile_passes: true          # variants counts full passes over the key-step
+  enlarge_pad: 1.0           # padding when a key-step exceeds window and tile_long is false
+  neg_ratio: 1.5             # non-SOP negatives per positive
+  neg_margin: 0.5            # keep negatives this far clear of any key-step
+  # seed: 42                 # reproducible negative sampling
 ```
 
 ## Key Concepts
 
-**`non_sop_action`:** The action index for "none of the above" / "doing action not belong to the defined SOP." This must be a real action in your `actions.json`. It represents idle time, non-specific activity, or out-of-scope behavior. Required for dynamic_mcq, dynamic_shuffling, and extra_negative.
+**`non_sop_action`:** The action index for "none of the above" / "doing action not belong to the defined SOP." This must be a real action in your `actions.json`. It represents idle time, non-specific activity, or out-of-scope behavior. Required for dynamic_mcq, dynamic_shuffling, extra_negative, and wmcq.
 
 **`exclude_action`:** Underscore-separated action indices to skip during generation. Example: `"1_2"` excludes actions at index 1 and 2. Useful for excluding the non-SOP action from positive sample generation, or excluding trivially similar actions.
 
 **`extra_negative_data_id`:** Must be the ID of a different annotated dataset already in `assets/data/`. This dataset's videos are used as negative examples for the current SOP.
+
+**`window` (wmcq):** Must equal the sliding-window length the evaluation uses. Nothing checks this — the augmentation service cannot see the evaluation config — and a mismatch fails silently: the stage still runs, still writes plausible output, and still reports healthy sample counts, but the clips no longer match the geometry they exist to match.
+
+**`tile_long` (wmcq):** On by default. Turn it off only if you specifically want the enlarge behaviour — with it off, key-steps longer than `window` are handled by stretching the window, which makes clip duration correlate with the action: a shortcut the model can learn and then cannot use at inference, where every window is the same length. The stage warns when this happens.
+
+**`neg_ratio` (wmcq):** Negatives per positive, drawn per source video, so the ratio holds within each video and across the dataset. It sets the *count*; the positions are a random draw from every window that clears every key-step by `neg_margin`. `1.5` is what our own best runs used; `1.0` and `2.0` were both tried and neither was better.
+
+**WMCQ is a different stage.** Types 1-7 consume the pre-cut chunks from the video split; WMCQ reads the source videos and their annotations and cuts its own windows. `merge_small_chunks` runs between the split and augmentation, so it does not affect WMCQ output.
+
+**WMCQ assumes sparse key-steps in long videos.** It draws negatives from footage clear of every key-step, and its positive windows must contain one key-step without reaching the next. Densely-packed actions break both assumptions — see `augmentation-types.md`, "What WMCQ assumes about your data".

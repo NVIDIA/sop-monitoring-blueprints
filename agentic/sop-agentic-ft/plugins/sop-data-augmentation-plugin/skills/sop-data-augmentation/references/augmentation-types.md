@@ -1,6 +1,8 @@
 # Augmentation Types Reference
 
-There are 7 augmentation types, executed sequentially in the order listed below. Each can be independently enabled/disabled in the config.
+There are 8 augmentation types, executed sequentially in the order listed below. Each can be independently enabled/disabled in the config.
+
+Types 1-7 consume the **pre-cut action chunks** produced by the video split, so every training clip is an exactly-trimmed action segment. Type 8 (WMCQ) is the exception: it goes back to the **source video** and cuts its own fixed-length windows.
 
 ## 1. BCQ (Binary Choice QA)
 
@@ -193,3 +195,132 @@ confusion_map: "{2: [1, 3], 5: [4, 6]}"   # optional, needed for "confusion" mod
 | `generate_all_options` | bool | `true` | Also generate a gold-standard sample with all action options |
 
 **When to use:** Enable when you have multiple annotated SOP datasets and want to prevent cross-SOP confusion. The `extra_negative_data_id` must be a separate annotated dataset that has already been processed through the annotation pipeline.
+
+---
+
+## 8. WMCQ (Window-Matched MCQ)
+
+**Purpose:** Cuts training clips as **real fixed-length windows taken straight from the source video**, positioned so a key-step falls at varying offsets inside them, with the genuine surrounding footage as padding. Negatives are windows of the same length taken from regions containing no key-step at all — `neg_ratio` decides *how many*, and their positions are a random draw from every window that clears every key-step by `neg_margin`.
+
+**Default:** Disabled
+
+**When to use:** When **DDM temporal chunking performs badly and inference falls back to uniform chunking.**
+
+This is the specific problem WMCQ solves. Every other augmentation type trains the VLM on exactly-trimmed action chunks — clean segments that start when the action starts and end when it ends. That is the right shape only when inference *also* sees exactly-trimmed segments, i.e. when DDM chunking is accurate. When it is not, and the pipeline falls back to uniform chunking, inference feeds the VLM fixed-length sliding windows instead: a brief key-step buried in surrounding non-SOP footage. The model has never been trained on anything that looks like that, so it is being asked a question in a format it has never seen.
+
+WMCQ removes that mismatch by making the training clips have the same geometry as the windows the evaluation actually produces.
+
+Do **not** reach for it first. If DDM chunking is good, the chunk-consuming types already match inference and WMCQ only adds redundant data. Diagnose the chunking first (see the RCA skill's DDM boundary analysis); WMCQ is the response to a *confirmed* chunking problem, not a general-purpose booster.
+
+### What WMCQ assumes about your data
+
+WMCQ was built for **long videos in which brief key-steps are separated by long stretches of non-SOP activity** — an operator performs a few seconds of procedure, then minutes of something else.
+
+That is not a coincidence: it is the same shape that makes DDM fail, which is why WMCQ exists at all. DDM learns boundaries from transition movement, and this shape gives it few transitions, buried in continuous operator motion that looks much the same on either side. Poor chunking follows, uniform chunking is the fallback, and the train/eval geometry mismatch WMCQ fixes appears. On a normally-paced dataset — actions following one another, transitions being the main thing on screen — DDM should learn those transitions, provided the action definitions correspond to a visible change and the annotation boundaries are placed consistently. A DDM failing *there* is a signal about the action list or the annotations, not a reason to reach for WMCQ.
+
+Two properties of the sparse shape are load-bearing:
+
+**1. Most of the video is non-SOP.** Negatives are windows that clear *every* key-step by `neg_margin`. The denser the key-steps, the fewer such positions exist. Once the supply runs out you get fewer negatives than `neg_ratio` asked for — the stage warns, but it still succeeds, and a WMCQ set with too few negatives pushes the model toward firing an action on almost every window. On a densely annotated video the candidate pool can fall short by 3-4x.
+
+**2. Key-steps are further apart than the window's slack.** A positive window must *contain* its key-step, so it can slide by `window - keystep_length` — call that the slack. If a neighbouring key-step is closer than the slack, the window swallows it, and the clip is then labelled with one action while showing two. With a 3s window: 2s actions separated by 1s gaps are fine (slack 1s, gap 1s), but 1s actions separated by 1s gaps put a second action inside **more than 90%** of the positive windows. Short key-steps are the exposed case — the shorter the action, the more room the window has to wander into its neighbour.
+
+The stage counts these and warns at the end of the run, and each affected sample carries `overlaps_other_keystep: true` in its `meta` block so the set can be audited afterwards. A large fraction means the dataset is densely annotated and this is the wrong stage for it.
+
+**Warnings the stage emits, and what each means:**
+
+| Warning | Meaning |
+|---|---|
+| `N distinct window position(s) for the M passes requested` | The key-step is exactly `window` long, or sits against the video end, so only one window position contains it. All `M` passes take that position, so the same clip is cut `M` times. That repetition is deliberate: `tile_passes` gives every key-step the same number of passes regardless of length, and dropping the duplicates would under-expose exactly the key-steps whose geometry already matches an eval window. Expect this on any dataset with key-steps the same length as the window — it is informational, not a fault |
+| `N of M positive window(s) also contain a NEIGHBOURING key-step` | Key-steps are closer together than the window's slack, so the single-action labels are incomplete. See the assumptions above |
+| `N of M clip(s) are longer than the Ws window` | `tile_long` is off and a key-step did not fit, so clip duration now correlates with the action |
+| `N of M clip(s) are SHORTER than the Ws window` | A window ran off the end of its source video |
+| `only N non-SOP window(s) available but M requested` | Not enough footage clear of every key-step; the set will be short of negatives |
+| `key-step ... has action N, outside the action list` | An annotation names an action the dataset does not define; that key-step is skipped |
+
+**So WMCQ is not a general action-recognition augmentation.** For densely-packed actions, or any task where several actions occur inside one window, the single-label MCQ form it emits is the wrong shape and the chunk-consuming types (BCQ, sequential MCQ, DMCQ) are the right ones. Making WMCQ work there would mean a different labelling scheme — multi-label windows, or a dominant-action rule — not a parameter change.
+
+**`window` must equal the evaluation sliding-window length.** This is the single most important setting. If the two diverge, the clips silently stop matching eval geometry — the augmentation still runs, still produces plausible-looking output, and still reports sample counts, but it no longer does the one thing it exists to do. There is no automatic check for this, because the augmentation service cannot see the evaluation config.
+
+**This is a different stage from types 1-7.** WMCQ reads the source videos and their annotations, not the pre-cut chunks. It is therefore unaffected by `merge_small_chunks`, which runs after the video split and before augmentation — do not expect merged chunks to show up in WMCQ output.
+
+**Key-steps longer than the window — and why `tile_long` matters:**
+
+A key-step can be longer than one window, and there are two ways to handle it.
+
+- **`tile_long: true` (default) — tile.** The key-step is covered by several windows of exactly `window`, each lying inside it.
+- **`tile_long: false` — enlarge.** The window grows to `keystep_length + enlarge_pad` so it still contains the whole key-step.
+
+Enlarging is simpler but introduces a subtle failure: **clip duration starts to correlate with the class.** If only one action is ever longer than the window, then every long clip is that action, and the model can score well on the training set by reading duration alone — without looking at the video at all. That shortcut does not exist at inference, where every window is exactly the same length, so the model finds nothing resembling what it learned. Tiling keeps every clip the same length, so duration carries no class information whatsoever.
+
+The stage logs the clip-duration spread per action at the end of the run, and warns explicitly when it produced any clip longer than the window. Read that warning — it is the only visible symptom, and the sample counts look perfectly healthy either way.
+
+**How the window count is chosen when tiling:**
+
+| Setting | Windows per key-step | Meaning |
+|---------|---------------------|---------|
+| `tile_long`, `tile_passes: false` | `variants` | Fixed count regardless of key-step length |
+| `tile_long` + `tile_passes` (default) | `variants * ceil(L / window)` | `variants` counts full **passes** over the key-step |
+
+`tile_passes` exists because "N crops" otherwise means very different things for different classes: N crops shows a 1-second action N times over, but barely covers a 20-second action once. With `tile_passes`, one pass means 100% coverage for every class. Long actions do contribute proportionally more samples — that is the intent, not a side effect.
+
+**Config parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `enable` | bool | `false` | Enable this stage |
+| `exclude_action` | string | `""` | Action indices to exclude from positives (e.g. `"1_2"`) |
+| `non_sop_action` | int | **REQUIRED** | Action index of "none of the above". Used as the label for every negative. **1-based**, matching the `(N)` prefix in `actions.json` — for a 4-action list whose last entry is `"(4) doing none of the above"`, this is `4`. The shipped `17` is a placeholder from another dataset and is almost certainly wrong for yours |
+| `window` | float | `3.0` | Clip length in seconds. **Must equal the evaluation sliding-window length** |
+| `variants` | int | `4` | Windows cut per key-step (see the table above for long key-steps) |
+| `variants_per_action` | string | `""` | Per-action override, e.g. `"2:8"` cuts 8 windows per action-2 key-step |
+| `tile_long` | bool | `true` | Tile over-long key-steps instead of enlarging the window |
+| `tile_passes` | bool | `true` | With `tile_long`: read `variants` as full passes over the key-step |
+| `enlarge_pad` | float | `1.0` | Padding added when a key-step exceeds `window` and `tile_long` is off |
+| `neg_ratio` | float | `1.5` | Non-SOP window negatives per positive, drawn per source video |
+| `neg_margin` | float | `0.5` | Keep negative windows this many seconds clear of any key-step |
+| `seed` | int | unset | Optional: fix the random seed for reproducible negative sampling |
+
+**`neg_ratio` sets the class prior the model learns, and it is not the same as the ratio the
+evaluation presents.** A sliding-window evaluation sweeps every offset, so the great majority of
+the windows it produces contain no key-step at all — on one real SOP test split, a 3s/1s sweep
+gave roughly 20 non-SOP windows for every window touching a key-step, against the 1.5 that
+`neg_ratio` trains. If the model over-fires — predicting an action on idle footage, showing up as
+duplicate detections in the sequence — that gap is the first thing to look at, and raising
+`neg_ratio` is the lever. Measure your own ratio rather than assuming: it depends on how much of
+your footage is non-SOP.
+
+**What WMCQ does not teach: partial overlap.** A positive window fully contains its key-step and a
+negative clears every key-step by `neg_margin`, so the model only ever sees a key-step whole or
+absent. The evaluation slides a window across every offset, so it also produces windows that
+overlap a key-step *partially* — the onset and offset cases. Those are exactly the moments where
+detections start and stop, and nothing in the training set resembles them. Expect boundary
+behaviour to be the weakest part of a WMCQ-trained model, and read a low recall on short actions
+in that light.
+
+**`variants_per_action`:** raising overall negative pressure tends to kill the visually subtlest class first — it is the one with the least margin to lose. `variants_per_action` counterweights that by cutting more windows for the class that is being crowded out, without changing anything for the others.
+
+**Recommended starting config.** The shipped defaults are already the configuration our own
+runs converged on, so the only field you must set is `non_sop_action`:
+
+```yaml
+wmcq:
+  enable: true
+  non_sop_action: <your "none of the above" index>
+  window: 3.0          # = evaluation sliding-window length
+```
+
+A note on what is *not* here: mining the model's own false positives and feeding them back as
+hard negatives was tried and is **not** offered. Across every scored run it came out below its
+own uniform-negative control — precision rose but recall collapsed, and in the worst case a
+whole class stopped being predicted. Uniform negatives at `neg_ratio: 1.5` were better every
+time. If you want to revisit it, treat it as a research question rather than a tuning knob.
+
+**Output:** `wmcq/wmcq.json` plus `wmcq/videos/`. Each record carries a `meta` block so the generated set is auditable after the fact:
+
+| Field | |
+|---|---|
+| `window_start`, `window_len` | where the clip was cut and how long it actually is |
+| `source_keystep` | `[start, end]` of the key-step it covers (positives only) |
+| `geometry` | `matched` = exactly `window` long · `enlarged` = stretched past it to fit an over-long key-step · `truncated` = ran off the end of the source video |
+| `overlaps_other_keystep` | the window also contains a neighbouring key-step, so its single-action label is incomplete |
+| `gt_action`, `pos_or_neg` | the label and whether the sample is a positive or a negative |

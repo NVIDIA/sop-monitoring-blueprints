@@ -55,3 +55,14 @@ ds_meta = {
 en_meta = {
     "num_options": ""
 }
+
+wmcq_meta = {
+    "gt_action": "",
+    "pos_or_neg": "",
+    "window_start": "",     # start of the cut window in the source video, seconds
+    "window_len": "",       # length of the cut window, seconds
+    "source_keystep": "",   # [start, end] of the annotated key-step this window covers
+    "geometry": "",         # "matched" (== window) or "enlarged" (stretched past window)
+    "overlaps_other_keystep": ""  # window also contains a NEIGHBOURING key-step: the
+                                  # single-action label below is then incomplete
+}

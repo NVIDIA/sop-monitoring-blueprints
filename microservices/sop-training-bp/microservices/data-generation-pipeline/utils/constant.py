@@ -31,6 +31,7 @@ STAGE_GQA_TO_GQAS = "gqas"
 STAGE_CONFIG_TO_DMCQ = "dynamic_mcq"
 STAGE_CONFIG_TO_DS = "dynamic_shuffling"
 STAGE_CONFIG_TO_EN = "extra_negative"
+STAGE_CONFIG_TO_WMCQ = "wmcq"
 STAGE_SPATIAL_LOCALIZATION = "spatial_localization"
 STAGE_FRAME_DROP = "frame_drop"
 

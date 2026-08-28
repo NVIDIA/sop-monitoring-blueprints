@@ -60,6 +60,20 @@ POS_OR_NEG = "pos_or_neg"
 HARD_MODE = "hard_mode"
 NUM_OPTIONS = "num_options"
 
+# WMCQ
+WMCQ = "config_to_wmcq"
+POS = "pos"
+NEG = "neg"
+WINDOW_START = "window_start"
+WINDOW_LEN = "window_len"
+SOURCE_KEYSTEP = "source_keystep"
+GEOMETRY = "geometry"
+GEOMETRY_MATCHED = "matched"    # clip is exactly --window long, same as an eval window
+GEOMETRY_ENLARGED = "enlarged"  # clip was stretched to fit an over-long key-step
+GEOMETRY_TRUNCATED = "truncated"  # clip ran off the end of the source video and is short
+OVERLAPS_OTHER = "overlaps_other_keystep"  # window also contains a neighbouring key-step
+DEFAULT_HUMAN_SUFFIX = "<video>\n"
+
 # DS
 DS = "config_to_dynamic_shuffling"
 DS_HARD_SAMPLING_MODE = ["front", "end", "random"]

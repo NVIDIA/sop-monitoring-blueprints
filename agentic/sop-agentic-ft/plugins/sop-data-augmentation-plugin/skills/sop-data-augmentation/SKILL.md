@@ -1,6 +1,6 @@
 ---
 name: sop-data-augmentation
-description: Use when the user wants to run data augmentation on an annotated dataset, configure augmentation parameters, check augmentation status, or understand what each QA augmentation type does (BCQ, MCQ, GQA, DMCQ, DSQA, ENQA)
+description: Use when the user wants to run data augmentation on an annotated dataset, configure augmentation parameters, check augmentation status, or understand what each QA augmentation type does (BCQ, MCQ, GQA, DMCQ, DSQA, ENQA, WMCQ)
 license: "CC-BY-4.0 AND Apache-2.0"
 ---
 
@@ -8,13 +8,13 @@ license: "CC-BY-4.0 AND Apache-2.0"
 
 ## Overview
 
-The Data and QA Augmentation microservice transforms annotated video data into structured question-answer (QA) formats used to train a Vision-Language Model (VLM) for SOP monitoring. It takes an annotated dataset (video action chunks with timestamps) and generates up to 7 types of QA training data — from simple binary yes/no questions to complex hard-negative mining with shuffled video frames.
+The Data and QA Augmentation microservice transforms annotated video data into structured question-answer (QA) formats used to train a Vision-Language Model (VLM) for SOP monitoring. It takes an annotated dataset (video action chunks with timestamps) and generates up to 8 types of QA training data — from simple binary yes/no questions to complex hard-negative mining with shuffled video frames.
 
 This skill covers how to configure, trigger, monitor, and troubleshoot the augmentation pipeline.
 
 **Bundled resources** (paths relative to this skill's directory):
 - `scripts/launch_vllm.sh` — Helper to start/stop a local vLLM server for GQA generation
-- `references/augmentation-types.md` — Detailed config parameters and guidance for all 7 augmentation types
+- `references/augmentation-types.md` — Detailed config parameters and guidance for all 8 augmentation types
 - `references/config-template.md` — Full annotated `augment_config.yaml` template
 - `references/launch-vllm-usage.md` — vLLM script options and Docker details
 
@@ -137,7 +137,7 @@ The `augmented_dataset_id` is returned by the POST request (format: `<label_data
 Check the output directory exists and contains expected subdirectories:
 ```bash
 ls assets/data/<augmented_dataset_id>/
-# Expected: bcq/ mcq/ golden_gqa/ gqas/ (and dmcq/ ds/ en/ if those stages were enabled)
+# Expected: bcq/ mcq/ golden_gqa/ gqas/ (and dmcq/ ds/ en/ wmcq/ if those stages were enabled)
 ```
 
 ### Step 5: Stop Local LLM (skip if using NVIDIA NIM API)
@@ -220,7 +220,7 @@ Health check.
 
 ## Augmentation Types
 
-7 types, executed sequentially. Each independently enabled/disabled in config. Default: first 4 enabled.
+8 types, executed sequentially. Each independently enabled/disabled in config. Default: first 4 enabled.
 
 | # | Type | Default | Purpose | Key Params |
 |---|------|---------|---------|------------|
@@ -231,8 +231,15 @@ Health check.
 | 5 | **Dynamic MCQ** | Disabled | Hard negative mining with confusable/adjacent actions | `non_sop_action`, `num_pos/neg`, hard modes |
 | 6 | **Dynamic Shuffling** | Disabled | Frame-shuffled noise videos as negatives | `non_sop_action`, `num_runs`, `num_hard_neg` |
 | 7 | **Extra Negative** | Disabled | Cross-SOP negatives from different datasets | `non_sop_action`, `extra_negative_data_id` |
+| 8 | **WMCQ** (Window-Matched MCQ) | Disabled | Real fixed-length windows cut from the source video, matching sliding-window eval geometry | `non_sop_action`, `window`, `neg_ratio` |
 
-Stages 5-7 require `non_sop_action` (the "none of the above" action index from your `actions.json`).
+Stages 5-8 require `non_sop_action` (the "none of the above" action index from your `actions.json`).
+
+**Stages 1-7 consume the pre-cut action chunks** from the video split. **Stage 8 (WMCQ) does not** — it reads the source videos and their annotations and cuts its own windows, so `merge_small_chunks` does not apply to it.
+
+**Reach for WMCQ when DDM temporal chunking performs badly and inference falls back to uniform chunking.** The other stages train on exactly-trimmed action chunks, which match inference only when the chunk boundaries are accurate. When they are not, inference feeds the VLM fixed-length sliding windows — a key-step buried in surrounding footage — which the model has never been trained on. WMCQ cuts training clips with that same geometry. If DDM chunking is good, WMCQ adds redundant data; diagnose the chunking first.
+
+**WMCQ assumes long videos with sparse key-steps** — brief procedure steps separated by long non-SOP stretches. It needs enough non-SOP footage to draw negatives from, and enough spacing that a window containing one key-step does not also contain the next. It is not a general action-recognition augmentation: for densely-packed actions the single-label window it emits is the wrong shape. See `references/augmentation-types.md`, "What WMCQ assumes about your data".
 
 For detailed config parameters, examples, hard mode explanations, and guidance on when to enable each type, read `references/augmentation-types.md`.
 
@@ -241,7 +248,8 @@ For detailed config parameters, examples, hard mode explanations, and guidance o
 The config file is at `assets/config/augment_config.yaml` (mounted volume — edit on host, no rebuild needed).
 
 Key concepts:
-- **`non_sop_action`:** Action index for "none of the above." Required for dynamic_mcq, dynamic_shuffling, extra_negative.
+- **`non_sop_action`:** Action index for "none of the above." Required for dynamic_mcq, dynamic_shuffling, extra_negative, wmcq.
+- **`window` (wmcq):** Must equal the evaluation sliding-window length. Nothing validates this and a mismatch fails silently — see `references/augmentation-types.md`.
 - **`exclude_action`:** Underscore-separated indices to skip (e.g., `"1_2"` excludes actions 1 and 2).
 - **`extra_negative_data_id`:** Must be a different annotated dataset ID already in `assets/data/`.
 
@@ -266,13 +274,26 @@ gqas:
   enable: true
 ```
 
-### Template: All 7 stages
+### Template: All 8 stages
 
 Enable all stages. Requires `non_sop_action` and (for extra_negative) a second annotated dataset.
 
-Set `non_sop_action` in dynamic_mcq, dynamic_shuffling, and extra_negative to your dataset's "none of the above" action index. Set `extra_negative_data_id` to a different dataset's ID.
+Set `non_sop_action` in dynamic_mcq, dynamic_shuffling, extra_negative, and wmcq to your dataset's "none of the above" action index. Set `extra_negative_data_id` to a different dataset's ID.
 
 Start conservative: `num_pos: 1, num_neg: 2` for dynamic_mcq. `num_runs: 1` for dynamic_shuffling and extra_negative.
+
+### Template: Poor DDM chunking / uniform chunking at inference
+
+Add WMCQ on top of the 4-stage starter so the VLM sees clips shaped like the windows it will actually be given. Set `window` to the evaluation sliding-window length — a mismatch silently defeats the whole stage.
+
+```yaml
+wmcq:
+  enable: true
+  non_sop_action: <your "none of the above" index>
+  window: 3.0            # = evaluation sliding-window length
+```
+
+Everything else is already defaulted to the configuration our own runs converged on — tiling on, `variants: 4`, `neg_ratio: 1.5`. Turn `tile_long` off only if you specifically want the enlarge behaviour: without it, key-steps longer than `window` are stretched to fit, which makes clip duration correlate with the action — a shortcut that does not exist at inference. The stage warns when this happens.
 
 ### Template: Local LLM for GQAs
 
@@ -315,6 +336,9 @@ assets/data/<dataset_id>_augmented_<N>/
   en/                   # Extra negative (if enabled)
     videos/
     en.json
+  wmcq/                 # Window-matched MCQ (if enabled)
+    videos/             # Fixed-length windows cut from the source videos
+    wmcq.json
 ```
 
 Each annotation JSON follows LLaVA format:
@@ -356,7 +380,9 @@ docker compose logs sop-data-gen --tail 100 -f
 - **Config is hot-reloadable.** The config YAML is a mounted volume — edit on host, changes take effect on next augmentation run without rebuilding the container.
 - **One failure = all fail.** If any enabled stage fails, all stages are marked as failed and the entire output directory is deleted. Check logs for the root cause.
 - **Output ID auto-increments.** The augmented dataset ID is `<label_data_id>_augmented_<N>` where N starts at 0 and increments with each new augmentation of the same source dataset.
-- **Advanced stages need `non_sop_action`.** Dynamic MCQ, Dynamic Shuffling, and Extra Negative all require the `non_sop_action` index to be correctly set to your dataset's "none of the above" action.
+- **Advanced stages need `non_sop_action`.** Dynamic MCQ, Dynamic Shuffling, Extra Negative, and WMCQ all require the `non_sop_action` index to be correctly set to your dataset's "none of the above" action.
+- **WMCQ needs the source videos, not just the chunks.** It reads `<dataset>/<video_name>.mp4` alongside `<dataset>/<video_name>/<video_name>_annotation.json`. It is unaffected by `merge_small_chunks`.
+- **WMCQ's `window` is not validated.** It must match the evaluation sliding-window length. If it does not, the stage still succeeds and still reports healthy sample counts while producing clips that no longer match eval geometry — the one thing it exists to do. Check the stage log: it prints the window it used and the clip-duration spread per action.
 - **Extra Negative needs a second dataset.** The `extra_negative_data_id` must point to a different annotated dataset that is already in `assets/data/`.
 - **GQAs is the only LLM-dependent stage.** All other stages are deterministic and run locally without external API calls.
 - **Adjust `min_options`/`max_options` to your action count.** For a dataset with N actions, `max_options` should not exceed N.

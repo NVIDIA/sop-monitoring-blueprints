@@ -85,6 +85,27 @@ extra_negative:
   generate_all_options: true # generate all options for extra negative
 
 
+# Window-Matched MCQ Config
+# Cuts training clips as fixed-length windows from the SOURCE video, matching the geometry a
+# sliding-window evaluation produces. Enable when DDM chunking is poor and inference falls back
+# to uniform chunking. Unlike the stages above it does not read the pre-cut chunks.
+# Defaults below are the configuration our runs converged on.
+wmcq:
+  enable: false
+  exclude_action: "" # actions to exclude from WMCQ generation
+  non_sop_action: 17 # 1-based index of the non-SOP action in actions.json (This must be set;
+                     # 17 is a placeholder from another dataset); label for every negative
+  window: 3.0 # clip length in seconds; MUST equal the evaluation sliding-window length
+  variants: 4 # windows cut per key-step
+  variants_per_action: "" # per-action override for variants (ex: "2:8" cuts 8 windows per action-2 key-step)
+  tile_long: true # tile a key-step longer than window instead of enlarging the window to fit
+  tile_passes: true # with tile_long, read variants as full passes over the key-step
+  enlarge_pad: 1.0 # padding added when a key-step exceeds window and tile_long is false
+  neg_ratio: 1.5 # non-SOP window negatives per positive
+  neg_margin: 0.5 # keep negative windows this many seconds clear of any key-step
+
+
+
 # Small Chunk Merge Config (multi-operator mode only)
 # Merges chunks whose duration < threshold of adjacent neighbor
 # Runs after video split, before augmentation

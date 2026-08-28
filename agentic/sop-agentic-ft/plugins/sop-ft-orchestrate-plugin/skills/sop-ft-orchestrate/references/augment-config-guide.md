@@ -32,6 +32,29 @@ dynamic_mcq:
 
 ---
 
+## WMCQ (uniform chunking / poor DDM)
+
+```yaml
+# Only worth enabling when chunking_algorithm=uniform, i.e. DDM segmentation was too poor to
+# use. Every other stage trains on exactly-trimmed chunks; under uniform chunking inference
+# feeds the VLM fixed-length sliding windows instead, which it has never seen. WMCQ cuts
+# training clips with that geometry.
+# window MUST match the evaluation sliding-window length -- nothing validates this and a
+# mismatch fails silently while still reporting healthy sample counts.
+# Everything else is defaulted to the configuration our runs converged on.
+wmcq:
+  enable: true
+  non_sop_action: <the "none of the above" action index>
+  window: 3.0
+```
+
+Do not enable it when DDM chunking is working — it adds clips the model does not need.
+
+It also assumes long videos with **sparse** key-steps: enough non-SOP footage to draw negatives
+from, and enough spacing that a positive window does not reach the next key-step. If the dataset
+packs actions densely, WMCQ will under-supply negatives and mislabel windows that contain two
+actions — prefer the chunk-consuming stages there.
+
 ## MCQ max_chunk_len
 
 ```yaml

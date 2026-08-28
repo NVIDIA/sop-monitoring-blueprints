@@ -621,6 +621,82 @@ class VLMAugmentationService:
         await self._run_cmd(cmd)
         return True
 
+    async def _config_to_wmcq(
+        self,
+        video_root: str,
+        output_root: str,
+        output_name: str,
+        actions_json: str,
+        augment_config: Dict[str, Any],
+    ) -> bool:
+        """Window-Matched MCQ generation"""
+
+        ext = augment_config.get("video_extention", const.DEFAULT_VIDEO_EXTENSION)
+        cfg = augment_config["wmcq"]
+        exclude_action = cfg.get("exclude_action", "")
+        window = cfg.get("window", "3.0")
+        variants = cfg.get("variants", "4")
+        variants_per_action = cfg.get("variants_per_action", "")
+        enlarge_pad = cfg.get("enlarge_pad", "1.0")
+        tile_long = cfg.get("tile_long", True)
+        tile_passes = cfg.get("tile_passes", True)
+        neg_ratio = cfg.get("neg_ratio", "1.5")
+        neg_margin = cfg.get("neg_margin", "0.5")
+        seed = cfg.get("seed", "")
+
+        # make sure non-sop-action is set. `is None` rather than a falsy check so an
+        # explicit 0 is not reported as "must be set"; it reaches config_to_wmcq, which
+        # rejects it with the range it actually violated.
+        non_sop_action = cfg.get("non_sop_action", None)
+        if non_sop_action is None:
+            raise HTTPException(
+                status_code=400, detail="non_sop_action action must be set for WMCQ generation"
+            )
+
+        cmd = [
+            "python",
+            "-m",
+            "vlm_aug.config_to_wmcq",
+            "--action-json",
+            actions_json,
+            "--video-root",
+            video_root,
+            "--ext",
+            ext,
+            "--exclude-action",
+            exclude_action,
+            "--non-sop-action",
+            str(non_sop_action),
+            "--window",
+            str(window),
+            "--variants",
+            str(variants),
+            "--variants-per-action",
+            str(variants_per_action),
+            "--enlarge-pad",
+            str(enlarge_pad),
+            "--tile-long",
+            str(bool(tile_long)).lower(),
+            "--tile-passes",
+            str(bool(tile_passes)).lower(),
+            "--neg-ratio",
+            str(neg_ratio),
+            "--neg-margin",
+            str(neg_margin),
+            "--output-root",
+            output_root,
+            "--output-name",
+            output_name,
+        ]
+
+        if str(seed) != "":
+            cmd += ["--seed", str(seed)]
+
+        # run command
+        await self._run_cmd(cmd)
+
+        return True
+
     def clean_up(self, output_root: str):
         """Clean up by remove all subdirectories except 'videos'"""
 
@@ -666,6 +742,7 @@ class VLMAugmentationService:
             const.STAGE_CONFIG_TO_DMCQ: {"method": self._config_to_dmcq, "output_folder": "dmcq"},
             const.STAGE_CONFIG_TO_DS: {"method": self._config_to_ds, "output_folder": "ds"},
             const.STAGE_CONFIG_TO_EN: {"method": self._config_to_en, "output_folder": "en"},
+            const.STAGE_CONFIG_TO_WMCQ: {"method": self._config_to_wmcq, "output_folder": "wmcq"},
         }
 
         all_actions[const.STAGE_SPATIAL_LOCALIZATION] = {

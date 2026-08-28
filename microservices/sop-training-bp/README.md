@@ -36,6 +36,7 @@ To achieve this, the application is structured into three microservices, each re
       * Negative: choices without correct action option
    * **DSQA (Dynamic Shuffling QA)**: Constructing noise video by combining frames from multiple different chunks and with questions that challenge the model verifying action absence
    * **ENQA (Extra Negative Source QA)**: Constructing noise video by adding different SOP videos into dataset and with questions that challenge the model verifying action absence
+   * **WMCQ (Window-Matched MCQ)**: Cutting training clips as real fixed-length windows from the source video so they match the geometry a sliding-window evaluation produces. For when DDM temporal chunking performs badly and inference falls back to uniform chunking
 
 
 3. **VLM Fine-Tuning Service**: Fine-tunes a pretrained vision-language model on the augmented QA dataset. The trained model is then capable of analyzing unseen video sequences to assess SOP adherence in real-time or batch settings.
@@ -344,6 +345,24 @@ After setting up training BP, there would be 3 microservices running.
       * `max_options`: Maximum number of options (need to adjust according to the number of actions)
       * `num_runs`: Number of runs for ENQA generation
       * `generate_all_options`: Generate all options QA for extra negative
+
+   * **Window-Matched MCQ**
+      * Cuts training clips as real fixed-length windows straight from the **source** video, with a key-step at varying offsets inside them and the genuine surrounding footage as padding — the geometry a sliding-window evaluation produces. Reach for it when DDM temporal chunking performs badly and inference falls back to uniform chunking. Unlike the stages above it does not consume the pre-cut chunks, so `merge_small_chunks` does not apply to it.
+      * Assumes **long videos with sparse key-steps** — brief steps separated by long non-SOP stretches. It needs non-SOP footage to draw negatives from, and enough spacing that a window containing one key-step does not also contain the next. Densely-packed actions break both, so this is not a general action-recognition augmentation.
+      * `enable`: Whether to enable WMCQ augmentation stage (default: `false`)
+      * `exclude_action`: Action to be excluded from the WMCQ positives generation (ex: 1_2 means action 1 and 2 would be excluded)
+      * `non_sop_action`: Action index of non-SOP action option (This must be set); the label for every negative
+         * non-SOP action option is the action option like "none of the above", "doing action not belong to the defined SOP", etc.
+      * `window`: Clip length in seconds. This **must** equal the evaluation sliding-window length; nothing validates it and a mismatch silently stops the clips from matching eval geometry
+      * `variants`: Number of windows cut per key-step
+      * `variants_per_action`: Per-action override for `variants` (ex: `2:8` cuts 8 windows per action-2 key-step)
+      * `tile_long`: Tile a key-step longer than `window` into several exactly-`window` clips instead of enlarging the window (default `true`). Enlarging makes clip duration correlate with the action, a shortcut that does not exist at inference
+      * `tile_passes`: With `tile_long`, read `variants` as full passes over the key-step (default `true`)
+      * `enlarge_pad`: Padding added when a key-step is longer than `window` and `tile_long` is false
+      * `neg_ratio`: Non-SOP window negatives per positive, drawn per source video; sets the count, while the positions are a random draw from every window clear of a key-step
+      * `neg_margin`: Keep negative windows this many seconds clear of any key-step
+      * `seed`: Optional random seed for reproducible negative sampling
+
 * `assets/config/train_config.toml`: Cosmos-Reason fine-tuning config. Training parameters such as epoch, learning rate, and pretrained model path can be set in this config. Please refer to [Cosmos-Reason](https://github.com/nvidia-cosmos/cosmos-reason2) for more config details. The parameters listed below are handled by the microservice under the hood. No need to modify this manually.
    * `train.output_dir`
    * `logging.experiment_name`

@@ -47,6 +47,7 @@ FOLDER_TO_STAGE = {
     "dmcq":        "dynamic_mcq",
     "ds":          "dynamic_shuffling",
     "en":          "extra_negative",
+    "wmcq":        "wmcq",
 }
 
 
