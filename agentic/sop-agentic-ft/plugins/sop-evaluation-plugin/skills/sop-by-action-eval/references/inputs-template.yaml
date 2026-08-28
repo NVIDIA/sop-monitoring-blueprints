@@ -37,6 +37,18 @@ gpu_id:                          # null | 0 | 1 | ...
 # adapter or when vLLM tokenizer compatibility breaks.
 backend: vllm                    # vllm | transformers
 
+max_model_len: 32768             # int | null. vLLM backend only. Context ceiling for the
+                                 #   engine, and the KV cache is sized from it. Default 32768
+                                 #   needs ~4.5 GiB and clears the ~20.4k a default request
+                                 #   uses (16184 vision tokens at total_pixels=16572416, +79
+                                 #   prompt, +4096 generated).
+                                 #   Raise it if requests are rejected for length -- e.g.
+                                 #   after raising total_pixels, since vision tokens are
+                                 #   total_pixels / (patch_size * spatial_merge_size)^2.
+                                 #   Lower it on a smaller card if the engine cannot start.
+                                 #   null restores vLLM's own derivation from the checkpoint,
+                                 #   which is what fails on a 262144-context checkpoint.
+
 # fps MUST match train_config.toml [custom.vision].fps for fair eval.
 fps: 8
 temperature: 0.0

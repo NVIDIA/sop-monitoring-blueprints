@@ -52,6 +52,12 @@ from utils.e2e_eval_utils import (
     get_video_duration_sec,
     map_chunks_to_ground_truth,
     uniform_chunk_boundaries,
+    overlapping_chunk_windows,
+    smooth_overlapping_windows,
+    get_non_sop_action,
+    get_golden_actions,
+    chunk_key_start_sec,
+    chunk_keys_to_boundaries,
     visualize_ddm_scores,
 )
 
@@ -117,7 +123,11 @@ def compute_e2e_accuracy(
 
     for video_name, chunk_texts in vlm_outputs.items():
         action_indices = chunk_action_map.get(video_name, [])
-        chunk_keys = sorted(chunk_texts.keys())
+        # By START TIME, never lexicographically: "[10.00s-13.00s]" sorts before
+        # "[2.00s-5.00s]" as a string, so any video past ten chunks paired predictions
+        # against the ground truth of entirely different moments.
+        # evaluate_action_sequences has always ordered this way; this had not.
+        chunk_keys = sorted(chunk_texts.keys(), key=chunk_key_start_sec)
 
         for i, chunk_key in enumerate(chunk_keys):
             if i >= len(action_indices):
@@ -423,6 +433,15 @@ def run_uniform_stage(args, anno_json: dict) -> dict:
             "metric": metric,
         }
 
+        # Overlapping mode: windows cannot be expressed as a boundary list, so they are
+        # carried alongside it. `boundaries` stays the non-overlapping grid so the
+        # temporal metrics and every existing consumer are unaffected.
+        stride_sec = getattr(args, "stride_sec", None)
+        if stride_sec is not None:
+            video_to_metric[video_name]["windows"] = overlapping_chunk_windows(
+                duration, args.chunk_length_sec, stride_sec
+            )
+
         if metric["F1"] is not None:
             f1_list.append(metric["F1"])
             precision_list.append(metric["Precision"])
@@ -496,12 +515,26 @@ def run_vlm_stage(args, temporal_results: dict) -> dict:  # pragma: no cover
             "gpu_memory_utilization=0.7, disable_custom_all_reduce=True",
             tp_size, torch.cuda.device_count(),
         )
-        llm = LLM(
+        # max_model_len: left to vLLM's own derivation unless given. Some checkpoints
+        # declare a very large context (Qwen3-VL ships 262144), and vLLM sizes the KV
+        # cache from that declaration -- ~36 GiB, more than an 80 GiB card has left at
+        # gpu_memory_utilization=0.7, so engine startup fails before any inference.
+        # The ceiling this workload actually needs is ~20.4k, not "a few thousand":
+        # 16184 vision tokens at the default total_pixels=16572416 (Qwen3-VL packs
+        # patch 16 x merge 2 = 32^2 = 1024 px/token), ~80 prompt tokens, and
+        # max_new_tokens=4096. 32768 is the round value above that.
+        llm_kwargs = dict(
             model=args.vlm_model_path,
             tensor_parallel_size=tp_size,
             gpu_memory_utilization=0.7,
             disable_custom_all_reduce=True,
         )
+        max_model_len = getattr(args, "max_model_len", None)
+        if max_model_len:
+            llm_kwargs["max_model_len"] = max_model_len
+            logging.info("vLLM max_model_len=%d (overriding the checkpoint's declaration)",
+                         max_model_len)
+        llm = LLM(**llm_kwargs)
         processor = AutoProcessor.from_pretrained(args.vlm_model_path)
         sampling_params = SamplingParams(
             temperature=args.temperature, max_tokens=4096, top_p=args.top_p,
@@ -513,9 +546,14 @@ def run_vlm_stage(args, temporal_results: dict) -> dict:  # pragma: no cover
                 logging.warning("No temporal results for %s, skipping", video_name)
                 continue
 
-            boundaries = temporal_results[video_name]["boundaries"]
-            chunk_starts = boundaries[:-1]
-            chunk_ends = boundaries[1:]
+            windows = temporal_results[video_name].get("windows")
+            if windows:
+                chunk_starts = [w[0] for w in windows]
+                chunk_ends = [w[1] for w in windows]
+            else:
+                boundaries = temporal_results[video_name]["boundaries"]
+                chunk_starts = boundaries[:-1]
+                chunk_ends = boundaries[1:]
             logging.info("VLM inference for %s: %d chunks", video_name, len(chunk_starts))
 
             for cs, ce in zip(chunk_starts, chunk_ends):
@@ -574,9 +612,14 @@ def run_vlm_stage(args, temporal_results: dict) -> dict:  # pragma: no cover
                 logging.warning("No temporal results for %s, skipping", video_name)
                 continue
 
-            boundaries = temporal_results[video_name]["boundaries"]
-            chunk_starts = boundaries[:-1]
-            chunk_ends = boundaries[1:]
+            windows = temporal_results[video_name].get("windows")
+            if windows:
+                chunk_starts = [w[0] for w in windows]
+                chunk_ends = [w[1] for w in windows]
+            else:
+                boundaries = temporal_results[video_name]["boundaries"]
+                chunk_starts = boundaries[:-1]
+                chunk_ends = boundaries[1:]
             logging.info("VLM inference for %s: %d chunks", video_name, len(chunk_starts))
 
             for cs, ce in zip(chunk_starts, chunk_ends):
@@ -659,6 +702,40 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--chunk-length-sec", type=float, default=None,
         help="Required when --chunking-algorithm=uniform. Length of each chunk in seconds.",
+    )
+    parser.add_argument(
+        "--stride-sec", type=float, default=None,
+        help="Optional, uniform chunking only. Emit OVERLAPPING windows of "
+             "--chunk-length-sec every --stride-sec seconds instead of a "
+             "non-overlapping grid, so a short action is centred in at least one window "
+             "rather than split across two. Unset = today's non-overlapping behaviour.",
+    )
+    parser.add_argument(
+        "--smooth-min-seg-sec", type=float, default=2.0,
+        help="Overlapping mode only. Action segments shorter than this become non-SOP.",
+    )
+    parser.add_argument(
+        "--max-model-len", type=int, default=None,
+        help="vLLM backend only. Context ceiling for the engine. Unset lets vLLM derive it "
+             "from the checkpoint, and a checkpoint declaring a large context (Qwen3-VL "
+             "ships 262144) sizes the KV cache past the card, so the engine never starts. "
+             "Derive it, do not guess: vision tokens = total_pixels / (patch_size * "
+             "spatial_merge_size)^2, so the default total_pixels=16572416 on Qwen3-VL "
+             "(16 x 2) is 16184 tokens, plus ~80 for the prompt and max_new_tokens=4096 "
+             "-- about 20.4k. 32768 covers that. A value under ~21000 still starts the "
+             "engine and then rejects every request.",
+    )
+    parser.add_argument(
+        "--non-sop-action", type=int, default=None,
+        help="Overlapping mode only. 1-based index of the 'none of the above' action, used "
+             "as the tie-break when windows disagree. Defaults to the lowest entry in "
+             "actions.json's 'actions_can_be_skipped'; required explicitly when the dataset "
+             "does not declare that field.",
+    )
+    parser.add_argument(
+        "--smooth-min-vote", type=int, default=1,
+        help="Overlapping mode only. Minimum overlapping windows that must agree before "
+             "an action is accepted for a time bin.",
     )
 
     # DDM args — used only when --chunking-algorithm=ddm.
@@ -752,10 +829,41 @@ def main(args) -> None:
 
     # Stage 1: temporal segmentation. Uniform chunking is a drop-in
     # replacement (same output shape) for the DDM-Net branch.
+    # Read through getattr: main() is also driven by hand-built arg objects that predate
+    # these options, and a bare attribute access would break them.
+    stride_sec = getattr(args, "stride_sec", None)
+
     if args.chunking_algorithm == "uniform":
         if args.chunk_length_sec is None or args.chunk_length_sec <= 0:
             raise ValueError(
                 "--chunk-length-sec must be > 0 when --chunking-algorithm=uniform"
+            )
+        if stride_sec is not None:
+            if stride_sec <= 0:
+                raise ValueError(f"--stride-sec must be > 0, got {stride_sec}")
+            if getattr(args, "smooth_min_vote", 1) < 1:
+                raise ValueError(
+                    f"--smooth-min-vote must be >= 1, got {args.smooth_min_vote}"
+                )
+            if stride_sec > args.chunk_length_sec:
+                raise ValueError(
+                    f"--stride-sec ({stride_sec}) must be <= --chunk-length-sec "
+                    f"({args.chunk_length_sec}); a larger stride leaves gaps between "
+                    f"windows that no window covers"
+                )
+        # A chunk longer than max_frames/fps is subsampled by the frame loader, so the
+        # model sees a thinned version of the window rather than the window. Silent, and
+        # easy to trip by raising chunk_length_sec without touching resolution_config.
+        _res = getattr(args, "resolution_config", None) or {}
+        _max_frames = _res.get("max_frames") if isinstance(_res, dict) else None
+        if _max_frames and args.chunk_length_sec * args.fps > _max_frames:
+            logging.warning(
+                "chunk_length_sec=%.2fs at fps=%s needs %.0f frames but resolution_config "
+                "caps at max_frames=%s, so every chunk is subsampled: the model sees a "
+                "thinned window, not the whole one. Lower chunk_length_sec or fps, or raise "
+                "max_frames.",
+                args.chunk_length_sec, args.fps,
+                args.chunk_length_sec * args.fps, _max_frames,
             )
         logging.info(
             "=== Stage 1: Uniform Chunking (chunk_length_sec=%.3f) ===",
@@ -763,6 +871,11 @@ def main(args) -> None:
         )
         temporal_results = run_uniform_stage(args, anno_json)
     else:
+        if stride_sec is not None:
+            raise ValueError(
+                "--stride-sec applies to --chunking-algorithm=uniform only; DDM "
+                "segmentation produces its own non-overlapping boundaries"
+            )
         if not args.ddm_checkpoint_path:
             raise ValueError(
                 "--ddm-checkpoint-path is required when --chunking-algorithm=ddm"
@@ -777,6 +890,15 @@ def main(args) -> None:
 
     anno_json_path = os.path.join(args.output_dir, "outputs_temporal_segmentation", "anno.json")
     golden_boundaries = extract_golden_boundaries(anno_json_path)
+    # Action id per golden interval. Without these, map_chunks_to_ground_truth returns
+    # the interval's POSITION, so per_action ends up keyed by chunk number -- yielding
+    # "(?) unknown 9" entries on a dataset with only four actions.
+    # Guarded: a caller that supplies boundaries by other means need not have the file.
+    # Absent, map_chunks_to_ground_truth falls back to positions, which is what this did
+    # before -- degraded, but not a crash from the accuracy stage.
+    golden_action_ids = (
+        get_golden_actions(anno_json_path) if os.path.exists(anno_json_path) else {}
+    )
 
     chunk_action_map = {}
     for video_name, video_result in temporal_results.items():
@@ -788,7 +910,8 @@ def main(args) -> None:
         pred_boundaries = video_result["boundaries"]
         action_count = len(golden_bdy) - 1  # N boundaries → N-1 actions
         chunk_action_map[video_name] = map_chunks_to_ground_truth(
-            pred_boundaries, golden_bdy, action_count
+            pred_boundaries, golden_bdy, action_count,
+            golden_actions=golden_action_ids.get(video_name),
         )
 
     accuracy_results = compute_e2e_accuracy(vlm_outputs, chunk_action_map, choices)
@@ -799,6 +922,82 @@ def main(args) -> None:
     pred_json_path = os.path.join(
         args.output_dir, "outputs_action_recognition", "video_name_to_output_text.json"
     )
+
+    # Overlapping windows predict the same instant several times, so the raw per-window
+    # labels are not a sequence -- read in time order they repeat each action once per
+    # covering window. Vote them down to a non-overlapping sequence first, written to its
+    # own file so the raw windows stay on disk for inspection. The scorer then runs
+    # unchanged on a normally-shaped input.
+    if stride_sec is not None:
+        # Same reason as stride_sec above: read through getattr so an arg object built
+        # without these still works.
+        min_seg_sec = getattr(args, "smooth_min_seg_sec", 2.0)
+        min_vote = getattr(args, "smooth_min_vote", 1)
+        # Explicit flag wins; otherwise infer from actions.json. Many datasets do not
+        # declare actions_can_be_skipped, so inference alone is not enough.
+        non_sop_action = getattr(args, "non_sop_action", None)
+        if non_sop_action is None:
+            non_sop_action = get_non_sop_action(args.actions_json_path)
+        if non_sop_action is None:
+            # Refuse rather than report. Without a non-SOP action the windows cannot be
+            # voted down, so BOTH the sequence metrics and the chunk-level accuracy would
+            # be computed on raw overlapping windows -- every action repeated once per
+            # covering window, paired against a grid the VLM was never asked about. An
+            # evaluation that cannot be scored must not return numbers that look scored.
+            raise ValueError(
+                "--stride-sec was set but no non-SOP action could be determined: pass "
+                "--non-sop-action, or declare 'actions_can_be_skipped' in actions.json. "
+                "Overlapping windows cannot be collapsed into a sequence without it, and "
+                "every metric would be invalid."
+            )
+        smoothed = {
+            video_name: smooth_overlapping_windows(
+                chunk_to_text,
+                non_sop_action=non_sop_action,
+                min_seg_sec=min_seg_sec,
+                min_vote=min_vote,
+            )
+            for video_name, chunk_to_text in vlm_outputs.items()
+        }
+        pred_json_path = os.path.join(
+            args.output_dir, "outputs_action_recognition",
+            "video_name_to_output_text_smoothed.json",
+        )
+        # The VLM stage normally creates this directory, but do not depend on
+        # another stage's side effect to be able to write here -- the accuracy
+        # write below takes the same precaution.
+        os.makedirs(os.path.dirname(pred_json_path), exist_ok=True)
+        with open(pred_json_path, "w") as f:
+            json.dump(smoothed, f, indent=2)
+        logging.info(
+            "Overlap smoothing (min_seg=%.2fs, min_vote=%d, non_sop=%d): "
+            "%d window(s) -> %d segment(s); wrote %s",
+            min_seg_sec, min_vote, non_sop_action,
+            sum(len(v) for v in vlm_outputs.values()),
+            sum(len(v) for v in smoothed.values()),
+            os.path.basename(pred_json_path),
+        )
+
+        # Chunk-level accuracy must be recomputed on the smoothed segments. Stage 1's
+        # boundaries describe a grid the VLM was never asked about: with overlapping
+        # windows there are far more predictions than slots, so the pairing above
+        # scored a prefix of the windows against unrelated ground truth. The smoothed
+        # segments ARE the non-overlapping chunks this run produced, so mapping them
+        # gives the field the same meaning it has without a stride.
+        smoothed_map = {}
+        for smoothed_video, smoothed_chunks in smoothed.items():
+            golden_bdy = golden_boundaries.get(smoothed_video)
+            if golden_bdy is None:
+                continue
+            seg_boundaries = chunk_keys_to_boundaries(smoothed_chunks)
+            if not seg_boundaries:
+                continue
+            smoothed_map[smoothed_video] = map_chunks_to_ground_truth(
+                seg_boundaries, golden_bdy, len(golden_bdy) - 1,
+                golden_actions=golden_action_ids.get(smoothed_video),
+            )
+        chunk_action_map = smoothed_map
+        accuracy_results = compute_e2e_accuracy(smoothed, chunk_action_map, choices)
     sequence_results = evaluate_action_sequences(
         anno_json_path=anno_json_path,
         pred_json_path=pred_json_path,

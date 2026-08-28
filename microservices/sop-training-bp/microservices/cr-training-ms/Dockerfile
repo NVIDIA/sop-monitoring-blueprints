@@ -181,9 +181,23 @@ FROM pre-package AS package
 
 WORKDIR /workspace/sop-cr-ftms
 
-# Install cosmos-rl v0.3.9, then cosmos-reason2-utils, pin kernels, drop xformers.
+# Install cosmos-rl v0.3.9, then cosmos-reason2-utils, pin kernels and diffusers,
+# drop xformers.
 # Pin kernels==0.12.3: 0.13.0 uses PEP 604 unions that huggingface_hub 0.36's
 # strict dataclasses reject, and transformers 4.57 pins huggingface_hub<1.0.
+# Pin diffusers==0.35.1 for the SAME huggingface_hub<1.0 ceiling: cosmos-rl pulls
+# diffusers unpinned, and from 0.36 it requires huggingface_hub>=1.23.0 -- which pip
+# cannot satisfy alongside transformers, so it installs the new diffusers against the
+# old hub and leaves it broken. cosmos_rl.policy.model.base imports DiffusionPipeline
+# at module load, so EVERY training process then dies at import with
+#   cannot import name 'get_cached_repo_tree' from 'huggingface_hub'
+# 0.35.1 is the last release whose only hub requirement is >=0.34.0.
+# Pin torchao==0.15.0: 0.16.0 removed torchao.dtypes.uintx.uint4_layout, which
+# diffusers imports at module load. diffusers 0.33-0.35 handle that ImportError by
+# calling logger.warning() from a block that runs BEFORE `logger` is assigned, so the
+# miss surfaces as `NameError: name 'logger' is not defined` and takes the whole
+# import chain -- and every training process -- down with it. 0.15.0 still ships the
+# module, so the handler never runs.
 RUN cd /workspace \
     && git clone --branch v0.3.9 --depth 1 https://github.com/nvidia-cosmos/cosmos-rl.git \
     && cd cosmos-rl \
@@ -191,7 +205,7 @@ RUN cd /workspace \
     && cd .. \
     && rm -rf cosmos-rl \
     && pip install git+https://github.com/nvidia-cosmos/cosmos-reason2.git@c9301793ffa3830a2a2f061d96a991d5f7c9ac38#subdirectory=cosmos_reason2_utils \
-    && pip install kernels==0.12.3 \
+    && pip install kernels==0.12.3 diffusers==0.35.1 torchao==0.15.0 \
     && pip uninstall -y xformers
 
 # Copy the microservice code

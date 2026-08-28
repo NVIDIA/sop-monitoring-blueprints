@@ -64,6 +64,9 @@ e2e-only:
     frames_per_segment_hint: 256
     chunking_algorithm: ddm                        # ddm | uniform
     chunk_length_sec: null                         # required when chunking_algorithm=uniform
+    stride_sec: null                               # uniform only: overlapping windows, one every stride_sec
+    smooth_min_seg_sec: 2.0                        # with stride_sec: drop action segments shorter than this
+    smooth_min_vote: 1                             # with stride_sec: overlapping windows that must agree
 """
 
 from __future__ import annotations
@@ -136,11 +139,13 @@ def _build_request(mode: str, cfg: dict) -> dict:
     common_keys = (
         "training_job_id", "val_dataset_id", "fps", "temperature", "top_p",
         "backend", "checkpoint_step", "resolution_config", "gpu_id",
+        "max_model_len",
     )
     e2e_keys = (
         "ddm_training_job_id", "ddm_checkpoint", "score_threshold", "nms_sec",
         "ddm_batch_size", "frames_per_segment_hint", "chunking_algorithm",
-        "chunk_length_sec",
+        "chunk_length_sec", "stride_sec", "smooth_min_seg_sec", "smooth_min_vote",
+        "non_sop_action",
     )
 
     body: dict = {}
@@ -162,6 +167,9 @@ def _build_request(mode: str, cfg: dict) -> dict:
             sys.exit(2)
         if algo == "uniform" and "chunk_length_sec" not in body:
             _eprint("ERROR: 'chunk_length_sec' is required when chunking_algorithm='uniform'")
+            sys.exit(2)
+        if algo == "ddm" and "stride_sec" in body:
+            _eprint("ERROR: 'stride_sec' applies to chunking_algorithm='uniform' only")
             sys.exit(2)
 
     return body

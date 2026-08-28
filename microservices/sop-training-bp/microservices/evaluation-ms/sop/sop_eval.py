@@ -247,6 +247,17 @@ if __name__ == "__main__":  # pragma: no cover
         "--tensor-parallel-size", type=int, default=0,
         help="vLLM tensor-parallel size. 0 = auto-detect from torch.cuda.device_count().",
     )
+    parser.add_argument(
+        "--max-model-len", type=int, default=None,
+        help="vLLM backend only. Context ceiling for the engine. Unset lets vLLM derive it "
+             "from the checkpoint, and a checkpoint declaring a large context (Qwen3-VL "
+             "ships 262144) sizes the KV cache past the card, so the engine never starts. "
+             "Derive it, do not guess: vision tokens = total_pixels / (patch_size * "
+             "spatial_merge_size)^2, so the default total_pixels=16572416 on Qwen3-VL "
+             "(16 x 2) is 16184 tokens, plus ~80 for the prompt and max_new_tokens=4096 "
+             "-- about 20.4k. 32768 covers that. A value under ~21000 still starts the "
+             "engine and then rejects every request.",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -282,12 +293,26 @@ if __name__ == "__main__":  # pragma: no cover
             f"vLLM tensor_parallel_size={tp_size} (visible CUDA devices: {torch.cuda.device_count()}), "
             f"gpu_memory_utilization=0.7, disable_custom_all_reduce=True"
         )
-        llm = LLM(
+        # max_model_len: left to vLLM's own derivation unless given. Some checkpoints
+        # declare a very large context (Qwen3-VL ships 262144), and vLLM sizes the KV
+        # cache from that declaration -- ~36 GiB, more than an 80 GiB card has left at
+        # gpu_memory_utilization=0.7, so engine startup fails before any inference.
+        # The ceiling this workload actually needs is ~20.4k, not "a few thousand":
+        # 16184 vision tokens at the default total_pixels=16572416 (Qwen3-VL packs
+        # patch 16 x merge 2 = 32^2 = 1024 px/token), ~80 prompt tokens, and
+        # max_new_tokens=4096. 32768 is the round value above that.
+        llm_kwargs = dict(
             model=args.model_path,
             tensor_parallel_size=tp_size,
             gpu_memory_utilization=0.7,
             disable_custom_all_reduce=True,
         )
+        max_model_len = getattr(args, "max_model_len", None)
+        if max_model_len:
+            llm_kwargs["max_model_len"] = max_model_len
+            logging.info("vLLM max_model_len=%d (overriding the checkpoint's declaration)",
+                         max_model_len)
+        llm = LLM(**llm_kwargs)
         processor = AutoProcessor.from_pretrained(args.model_path)
         sampling_params = SamplingParams(
             temperature=args.temperature, max_tokens=args.max_new_tokens, top_p=args.top_p,

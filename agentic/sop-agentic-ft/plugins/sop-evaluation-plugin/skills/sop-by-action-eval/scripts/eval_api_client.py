@@ -136,6 +136,7 @@ def _build_request(mode: str, cfg: dict) -> dict:
     common_keys = (
         "training_job_id", "val_dataset_id", "fps", "temperature", "top_p",
         "backend", "checkpoint_step", "resolution_config", "gpu_id",
+        "max_model_len",
     )
     e2e_keys = (
         "ddm_training_job_id", "ddm_checkpoint", "score_threshold", "nms_sec",

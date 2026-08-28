@@ -307,6 +307,7 @@ async def start_evaluation(request: EvaluationRequest, background_tasks: Backgro
                 if request.resolution_config else None
             ),
             gpu_id=validated_gpu_id,
+            max_model_len=request.max_model_len,
         )
 
         logger.info(f"Started evaluation job {eval_job_id}")
@@ -518,6 +519,10 @@ async def start_e2e_evaluation(request: E2eEvaluationRequest, background_tasks: 
                 "ddm_batch_size": request.ddm_batch_size,
                 "chunking_algorithm": request.chunking_algorithm,
                 "chunk_length_sec": request.chunk_length_sec,
+                "stride_sec": request.stride_sec,
+                "smooth_min_seg_sec": request.smooth_min_seg_sec,
+                "smooth_min_vote": request.smooth_min_vote,
+                "non_sop_action": request.non_sop_action,
                 "created_at": now,
                 "updated_at": now,
                 "log_file_path": log_path,
@@ -541,6 +546,11 @@ async def start_e2e_evaluation(request: E2eEvaluationRequest, background_tasks: 
             ddm_batch_size=request.ddm_batch_size,
             chunking_algorithm=request.chunking_algorithm,
             chunk_length_sec=request.chunk_length_sec,
+            stride_sec=request.stride_sec,
+            smooth_min_seg_sec=request.smooth_min_seg_sec,
+            smooth_min_vote=request.smooth_min_vote,
+            non_sop_action=request.non_sop_action,
+            max_model_len=request.max_model_len,
             created_at=now,
             updated_at=now,
         )
@@ -570,6 +580,11 @@ async def start_e2e_evaluation(request: E2eEvaluationRequest, background_tasks: 
             ),
             chunking_algorithm=request.chunking_algorithm,
             chunk_length_sec=request.chunk_length_sec,
+            stride_sec=request.stride_sec,
+            smooth_min_seg_sec=request.smooth_min_seg_sec,
+            smooth_min_vote=request.smooth_min_vote,
+            non_sop_action=request.non_sop_action,
+            max_model_len=request.max_model_len,
             gpu_id=validated_gpu_id,
         )
 
@@ -680,6 +695,7 @@ async def run_evaluation(
     top_p: float = 1.0,
     resolution_config: Optional[dict] = None,
     gpu_id: Optional[int] = None,
+    max_model_len: Optional[int] = None,
 ):
     """Background task to run per-action-chunk VLM evaluation."""
     cached = eval_jobs_cache.get(eval_job_id) or {}
@@ -718,6 +734,8 @@ async def run_evaluation(
             "--backend", backend,
             "--use-fps-or-nframes", "fps",
         ]
+        if max_model_len is not None:
+            cmd += ["--max-model-len", str(max_model_len)]
 
         env = _subprocess_env_for_gpu(gpu_id)
         if gpu_id is not None:
@@ -808,6 +826,11 @@ async def run_e2e_evaluation(
     resolution_config: Optional[dict] = None,
     chunking_algorithm: str = "ddm",
     chunk_length_sec: Optional[float] = None,
+    stride_sec: Optional[float] = None,
+    smooth_min_seg_sec: float = 2.0,
+    smooth_min_vote: int = 1,
+    non_sop_action: Optional[int] = None,
+    max_model_len: Optional[int] = None,
     gpu_id: Optional[int] = None,
 ):
     """Background task to run end-to-end (DDM + VLM) evaluation."""
@@ -845,6 +868,18 @@ async def run_e2e_evaluation(
             "--top-p", str(top_p),
             "--backend", backend,
         ]
+        # Overlapping-window mode. Only appended when a stride was requested, so an
+        # unset stride runs the exact command this service has always run.
+        if stride_sec is not None:
+            cmd += [
+                "--stride-sec", str(stride_sec),
+                "--smooth-min-seg-sec", str(smooth_min_seg_sec),
+                "--smooth-min-vote", str(smooth_min_vote),
+            ]
+            if non_sop_action is not None:
+                cmd += ["--non-sop-action", str(non_sop_action)]
+        if max_model_len is not None:
+            cmd += ["--max-model-len", str(max_model_len)]
         # DDM-specific args only when DDM is the chunker. Uniform mode skips
         # them entirely (sop_e2e_eval.py treats ddm-checkpoint-path as optional
         # and won't try to load DDM-Net at all).

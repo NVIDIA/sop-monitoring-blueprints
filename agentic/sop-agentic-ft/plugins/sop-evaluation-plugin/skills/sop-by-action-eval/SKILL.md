@@ -105,6 +105,7 @@ All other fields have sensible defaults; see template for details.
 | `checkpoint_step` | `checkpoint_step` | latest |
 | `resolution_config` | `resolution_config` | training-mirror defaults |
 | `gpu_id` | `gpu_id` | all visible GPUs |
+| `max_model_len` | `max_model_len` | `32768`; vLLM backend only — raise if requests are rejected for length, lower if the engine cannot start |
 
 `backend: transformers` is required when evaluating LoRA-only checkpoints — vLLM's tokenizer/config compatibility breaks on some Qwen3-VL releases when `flash_attn` is not installed.
 

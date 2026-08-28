@@ -35,6 +35,21 @@ eval_port: 32090
 chunking_algorithm: ddm
 chunk_length_sec:               # null unless chunking_algorithm=uniform
 
+# Overlapping windows — uniform chunking only, leave null for ddm.
+# Emits one window of chunk_length_sec every stride_sec instead of a fixed grid, so a
+# short action straddling a boundary is still contained whole by some window. Reach for
+# it when DDM chunking is poor and you have fallen back to uniform. Must be <=
+# chunk_length_sec; a wider stride leaves gaps that no window covers.
+stride_sec:                     # null = non-overlapping (today's behaviour)
+smooth_min_seg_sec:             # default 2.0. Predicted action segments shorter than
+                                #   this become non-SOP. If the dataset's real actions
+                                #   are shorter than the default, it will erase them.
+smooth_min_vote:                # default 1. Overlapping windows that must agree before
+                                #   an action is accepted for a moment.
+non_sop_action:                 # 1-based index of the non-SOP action. Inferred from
+                                #   actions.json when it declares actions_can_be_skipped;
+                                #   REQUIRED with stride_sec otherwise.
+
 # === DDM (Temporal Segmentation) =====================================
 # score_threshold: boundary score cutoff. Default 0.5 (eval-ms default).
 # Orchestrator may tune down for MISSING actions; never up for duplicates.
@@ -49,6 +64,13 @@ ddm_checkpoint:
 # === VLM (Action Recognition) ========================================
 # These MUST match train_config.toml [custom.vision].
 backend: vllm                   # transformers for LoRA evals (see by-action template)
+max_model_len: 32768            # vLLM backend only. Context ceiling; the KV cache is sized
+                                #   from it. 32768 needs ~4.5 GiB and clears the ~20.4k a
+                                #   default request uses. Raise it if requests are rejected
+                                #   for length (vision tokens scale with total_pixels),
+                                #   lower it if the engine cannot start on a smaller card.
+                                #   null restores vLLM's derivation from the checkpoint,
+                                #   which fails on a 262144-context checkpoint.
 fps: <fps>
 temperature: 0.0
 top_p: 1.0

@@ -18,6 +18,7 @@
 
 import json
 import logging
+import math
 import os
 import re
 from typing import Optional
@@ -59,7 +60,7 @@ def _get_skippable_actions(actions_json_path: Optional[str]) -> set:
     return skippable
 
 
-def _get_golden_actions(anno_json_path: str) -> dict:
+def get_golden_actions(anno_json_path: str) -> dict:
     """
     Extract golden action sequences from an annotation JSON.
 
@@ -304,10 +305,37 @@ def evaluate_action_sequences(
     }
 
 
-def _chunk_key_start_sec(key: str) -> float:
-    """Extract the start-second from a chunk key like '[12.34s-56.78s]' for sorting."""
+def chunk_key_start_sec(key: str) -> float:
+    """Extract the start-second from a chunk key like '[12.34s-56.78s]' for sorting.
+
+    Chunk keys MUST be ordered with this, never lexicographically: "[10.00s-13.00s]"
+    sorts before "[2.00s-5.00s]" as a string, so any video past ten chunks comes out
+    in the wrong order.
+    """
     m = re.match(r"\[(-?\d+(?:\.\d+)?)s", key.strip())
     return float(m.group(1)) if m else 0.0
+
+
+# Retained for internal callers that predate the public name.
+_chunk_key_start_sec = chunk_key_start_sec
+
+
+def chunk_keys_to_boundaries(chunk_to_text: dict) -> list[float]:
+    """Reconstruct a boundary list from contiguous, non-overlapping chunk keys.
+
+    Used to map smoothed segments onto the ground truth the same way stage 1's own
+    boundaries are mapped, so chunk-level accuracy means the same thing whether or
+    not the windows overlapped.
+    """
+    spans = []
+    for key in chunk_to_text:
+        m = re.match(r"\[(-?\d+(?:\.\d+)?)s-(-?\d+(?:\.\d+)?)s\]", key.strip())
+        if m:
+            spans.append((float(m.group(1)), float(m.group(2))))
+    if not spans:
+        return []
+    spans.sort()
+    return [spans[0][0]] + [end for _, end in spans]
 
 
 def resolve_ddm_checkpoint(
@@ -591,6 +619,176 @@ def get_video_duration_sec(video_path: str) -> float:
     raise RuntimeError(f"Could not determine duration for {video_path}")
 
 
+# Retained for internal callers that predate the public name.
+_get_golden_actions = get_golden_actions
+
+
+def get_non_sop_action(actions_json_path: Optional[str]) -> Optional[int]:
+    """Action id that means "not performing any SOP step", or None if undeclared.
+
+    Read from ``actions_can_be_skipped`` in actions.json, which is where the dataset
+    already declares it; the lowest such id is used when several are listed.
+    """
+    skippable = _get_skippable_actions(actions_json_path)
+    return min(skippable) if skippable else None
+
+
+def overlapping_chunk_windows(
+    duration_sec: float, window_sec: float, stride_sec: float
+) -> list[list[float]]:
+    """
+    Compute OVERLAPPING fixed-length windows: one window of `window_sec` every
+    `stride_sec` seconds.
+
+    Returned as explicit ``[start, end]`` pairs rather than the flat boundary list
+    ``uniform_chunk_boundaries`` produces, because overlapping windows cannot be
+    expressed as a boundary list -- consecutive windows share time.
+
+    A non-overlapping grid (``stride_sec == window_sec``) is exactly what
+    ``uniform_chunk_boundaries`` yields, so this is a strict generalisation.
+
+    The trailing window is clipped at ``duration_sec``, exactly as the non-overlapping
+    path does -- so with ``stride_sec == window_sec`` this returns precisely the pairs
+    ``uniform_chunk_boundaries`` yields, including the short final chunk when the
+    duration is not a whole number of windows. Dropping that tail would quietly stop
+    evaluating the end of every such video.
+    """
+    if window_sec <= 0:
+        raise ValueError(f"window_sec must be > 0, got {window_sec}")
+    if stride_sec <= 0:
+        raise ValueError(f"stride_sec must be > 0, got {stride_sec}")
+    if duration_sec <= 0:
+        raise ValueError(f"duration_sec must be > 0, got {duration_sec}")
+
+    windows: list[list[float]] = []
+    start = 0.0
+    while start < duration_sec:
+        end = min(start + window_sec, duration_sec)
+        windows.append([round(start, 3), round(end, 3)])
+        if end >= duration_sec:
+            break
+        start += stride_sec
+    return windows
+
+
+def smooth_overlapping_windows(
+    chunk_to_text: dict,
+    non_sop_action: Optional[int],
+    min_seg_sec: float = 2.0,
+    min_vote: int = 1,
+) -> dict:
+    """
+    Collapse overlapping per-window predictions into a non-overlapping sequence.
+
+    With overlapping windows the same instant is predicted several times, so the raw
+    per-window labels cannot be read as a sequence -- concatenating them in time order
+    yields each action repeated once per covering window, interleaved with whatever the
+    off-centre windows saw. This votes per time bin instead, then re-emits the result as
+    ordinary non-overlapping chunks so the downstream sequence scoring is unchanged.
+
+    Three filters, in order:
+      * per-bin majority vote across every window covering that bin; a tie prefers
+        ``non_sop_action`` so an ambiguous instant does not invent an action;
+      * ``min_vote`` -- an action must be backed by at least this many overlapping
+        windows, which suppresses a single off-centre window firing alone;
+      * ``min_seg_sec`` -- an action segment shorter than this becomes non-SOP,
+        which removes the brief blips that dense windows produce at boundaries.
+
+    The bin size is derived, not configured. A window covers ``[iS, iS + W)``, so the
+    set of windows covering an instant changes only at a multiple of ``S`` or of
+    ``iS + W`` -- every change point is therefore a multiple of ``gcd(W, S)``. Bins of
+    that size are exact: the covering set is constant across each one. Anything finer
+    just splits a bin into identical copies, and anything coarser straddles a change
+    point and mis-votes. The gcd is taken over the window boundaries actually present,
+    so a clipped trailing window is handled without special-casing.
+
+    All arithmetic is in integer milliseconds. Binning by ``int(t / resolution)`` in
+    floating point silently floors to the wrong bin at ordinary values -- ``int(0.3/0.1)``
+    is 2, not 3 -- which shifts a window's votes by one bin.
+
+    Args:
+        chunk_to_text: ``{"[start s-end s]": vlm_response}`` for ONE video.
+        non_sop_action: action id used for "nothing is happening". Required for
+            smoothing to mean anything; when None the function returns the input
+            unchanged rather than guessing.
+        min_seg_sec: shortest action segment to keep, seconds. Rounded to the derived
+            bin size, which is the finest any segment boundary can fall on anyway.
+        min_vote: minimum overlapping windows backing an action.
+
+    Returns:
+        ``{"[start s-end s]": "(N) "}`` with non-overlapping, time-ordered keys.
+    """
+    if non_sop_action is None:
+        logger.warning(
+            "smooth_overlapping_windows: no non-SOP action id, returning windows unsmoothed"
+        )
+        return dict(chunk_to_text)
+
+    windows = []
+    for key, text in chunk_to_text.items():
+        m = re.match(r"\[(-?\d+(?:\.\d+)?)s-(-?\d+(?:\.\d+)?)s\]", key.strip())
+        if not m:
+            continue
+        ids = [int(x.group(1)) for x in
+               (_ACTION_PREFIX_RE.match(ss) for ss in _read_sop_steps(text)) if x]
+        if ids:
+            windows.append((round(float(m.group(1)) * 1000),
+                            round(float(m.group(2)) * 1000), ids[0]))
+    if not windows:
+        return {}
+
+    # Coarsest bin on which every window boundary lands exactly.
+    bin_ms = 0
+    for start_ms, end_ms, _ in windows:
+        bin_ms = math.gcd(bin_ms, start_ms, end_ms)
+    if bin_ms <= 0:
+        return {}
+
+    end_ms = max(w[1] for w in windows)
+    n_bins = end_ms // bin_ms
+    votes: list = [dict() for _ in range(n_bins)]
+    for start_ms, win_end_ms, action in windows:
+        for b in range(max(0, start_ms // bin_ms), min(n_bins, win_end_ms // bin_ms)):
+            votes[b][action] = votes[b].get(action, 0) + 1
+
+    timeline = []
+    for bin_votes in votes:
+        if not bin_votes:
+            timeline.append(non_sop_action)
+            continue
+        top = max(bin_votes.values())
+        leaders = [a for a, v in bin_votes.items() if v == top]
+        # A tie prefers non-SOP: an instant the windows disagree about is not evidence
+        # for any particular action.
+        winner = non_sop_action if non_sop_action in leaders else min(leaders)
+        if winner != non_sop_action and bin_votes.get(winner, 0) < min_vote:
+            winner = non_sop_action
+        timeline.append(winner)
+
+    # Drop action segments shorter than min_seg_sec.
+    min_bins = max(1, round(min_seg_sec * 1000 / bin_ms))
+    i = 0
+    while i < len(timeline):
+        j = i
+        while j < len(timeline) and timeline[j] == timeline[i]:
+            j += 1
+        if timeline[i] != non_sop_action and (j - i) < min_bins:
+            for t in range(i, j):
+                timeline[t] = non_sop_action
+        i = j
+
+    # Re-emit as non-overlapping chunks in the key format the scorer expects.
+    smoothed: dict = {}
+    i = 0
+    while i < len(timeline):
+        j = i
+        while j < len(timeline) and timeline[j] == timeline[i]:
+            j += 1
+        smoothed[f"[{i * bin_ms / 1000:.2f}s-{j * bin_ms / 1000:.2f}s]"] = f"({timeline[i]}) "
+        i = j
+    return smoothed
+
+
 def uniform_chunk_boundaries(duration_sec: float, chunk_length_sec: float) -> list[float]:
     """
     Compute fixed-length chunk boundaries for a video of length `duration_sec`.
@@ -621,18 +819,26 @@ def map_chunks_to_ground_truth(
     pred_boundaries: list[float],
     golden_boundaries: list[float],
     action_count: int,
+    golden_actions: Optional[list[int]] = None,
 ) -> list[int]:
     """
-    For each predicted chunk, determine the ground-truth action index (1-based)
-    by computing which golden action interval has the maximum time overlap.
+    For each predicted chunk, determine the ground-truth ACTION ID by finding which
+    golden interval it overlaps most.
 
     Args:
-        pred_boundaries: [start, b1, b2, ..., end] from DDM
+        pred_boundaries: [start, b1, b2, ..., end] from stage 1
         golden_boundaries: [start, b1, b2, ..., end] from annotation
-        action_count: number of actions
+        action_count: clamp for the positional fallback
+        golden_actions: action id per golden interval, in order, from
+            get_golden_actions(). STRONGLY PREFERRED -- without it this returns the
+            interval's POSITION instead, which equals the action id only when a video's
+            actions happen to be 1..N in order. A real SOP video repeats its non-SOP
+            action between key-steps, so positions run to the chunk count (13, 20, ...)
+            while ids stay within the action list, and every consumer that treats the
+            result as an action id then reads off the end of that list.
 
     Returns:
-        List of 1-based action indices, one per predicted chunk.
+        List of action ids (or positions, in the legacy fallback), one per predicted chunk.
     """
     # action i (1-based) spans [golden[i-1], golden[i]]
     golden_intervals = list(zip(golden_boundaries[:-1], golden_boundaries[1:]))
@@ -650,6 +856,10 @@ def map_chunks_to_ground_truth(
                 best_overlap = overlap
                 best_action = idx + 1  # 1-based
 
-        result.append(min(best_action, action_count))
+        if golden_actions:
+            idx = min(best_action, len(golden_actions)) - 1
+            result.append(int(golden_actions[idx]))
+        else:
+            result.append(min(best_action, action_count))
 
     return result

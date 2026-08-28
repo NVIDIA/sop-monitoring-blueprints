@@ -62,6 +62,14 @@ class EvaluationRequest(BaseModel):
     # GPUs. When set, app.py exports CUDA_VISIBLE_DEVICES=<gpu_id> so both
     # DDM's hardcoded cuda:0 and vLLM's auto-detected TP target it.
     gpu_id: Optional[int] = None
+    # vLLM backend only. Context ceiling for the engine. Defaults to 32768
+    # because deriving it from the checkpoint is a broken default: Qwen3-VL
+    # declares 262144, which sizes the KV cache at ~36 GiB and the engine
+    # refuses to start on an 80 GiB card. 32768 needs ~4.5 GiB and clears the
+    # ~20.4k a default request actually uses. Raise it if a request is rejected
+    # for length, lower it on a smaller card. Explicit null restores vLLM's own
+    # derivation.
+    max_model_len: Optional[int] = 32768
 
 
 class EvaluationResponse(BaseModel):
@@ -103,6 +111,11 @@ class E2eEvaluationRequest(BaseModel):
     # and skips DDM. Mirrors inference pipeline's chunking_options.algorithm.
     chunking_algorithm: Literal["ddm", "uniform"] = "ddm"
     chunk_length_sec: Optional[float] = None
+    stride_sec: Optional[float] = None
+    smooth_min_seg_sec: float = 2.0
+    smooth_min_vote: int = 1
+    non_sop_action: Optional[int] = None
+    max_model_len: Optional[int] = 32768
     gpu_id: Optional[int] = None
 
     @model_validator(mode="after")
@@ -111,6 +124,11 @@ class E2eEvaluationRequest(BaseModel):
             if not self.ddm_training_job_id:
                 raise ValueError(
                     "ddm_training_job_id is required when chunking_algorithm='ddm'"
+                )
+            if self.stride_sec is not None:
+                raise ValueError(
+                    "stride_sec applies to chunking_algorithm='uniform' only; DDM "
+                    "segmentation produces its own non-overlapping boundaries"
                 )
         else:  # uniform
             if self.chunk_length_sec is None:
@@ -121,6 +139,32 @@ class E2eEvaluationRequest(BaseModel):
                 raise ValueError(
                     f"chunk_length_sec must be > 0, got {self.chunk_length_sec}"
                 )
+            if self.stride_sec is not None:
+                if self.stride_sec <= 0:
+                    raise ValueError(f"stride_sec must be > 0, got {self.stride_sec}")
+                # A stride wider than the window leaves stretches of the video inside no
+                # window at all. Those instants collect no votes and are emitted as
+                # non-SOP, so the run would silently report "nothing happening" over
+                # footage it never actually evaluated. Equal is allowed: that is the
+                # ordinary non-overlapping grid.
+                if self.stride_sec > self.chunk_length_sec:
+                    raise ValueError(
+                        f"stride_sec ({self.stride_sec}) must be <= chunk_length_sec "
+                        f"({self.chunk_length_sec}); a larger stride leaves gaps between "
+                        f"windows that no window covers"
+                    )
+                if self.smooth_min_seg_sec < 0:
+                    raise ValueError(
+                        f"smooth_min_seg_sec must be >= 0, got {self.smooth_min_seg_sec}"
+                    )
+                if self.smooth_min_vote < 1:
+                    raise ValueError(
+                        f"smooth_min_vote must be >= 1, got {self.smooth_min_vote}"
+                    )
+                if self.non_sop_action is not None and self.non_sop_action < 1:
+                    raise ValueError(
+                        f"non_sop_action is a 1-based action index, got {self.non_sop_action}"
+                    )
         return self
 
 
@@ -134,7 +178,11 @@ class E2eEvaluationResponse(BaseModel):
 class E2eEvaluationStatus(BaseModel):
     eval_job_id: str
     training_job_id: str
-    ddm_training_job_id: str
+    # Optional, matching the request model: a uniform-chunking run has no DDM job.
+    # Typed as a required str this rejected its own valid response, so every status
+    # poll for a DDM-less run returned HTTP 500 and the job could never be observed
+    # to finish -- the run succeeded while the caller recorded a timeout.
+    ddm_training_job_id: Optional[str] = None
     val_dataset_id: str
     status: str
     overall_accuracy: Optional[float] = None

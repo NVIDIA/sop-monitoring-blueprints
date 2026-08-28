@@ -24,7 +24,7 @@ If the user provided natural language parameter overrides alongside the inputs.y
 1. Parse the overrides. If any part of the input cannot be clearly mapped to a yaml field, list the ambiguous parts and ask the user to clarify before proceeding. Map to the yaml structure (see `references/inputs-template.yaml`):
    - Required: `training_job_id`, `val_dataset_id`, and (when `chunking_algorithm=ddm`) `ddm_training_job_id`
    - Required (uniform chunking): `chunk_length_sec` when `chunking_algorithm=uniform`
-   - Optional: `eval_host`, `eval_port`, `host_results_root`, `backend`, `fps`, `temperature`, `top_p`, `checkpoint_step`, `ddm_checkpoint`, `resolution_config`, `gpu_id`, `score_threshold`, `nms_sec`, `ddm_batch_size`, `frames_per_segment_hint`, `chunking_algorithm`, `poll_interval_sec`, `timeout_sec`
+   - Optional: `eval_host`, `eval_port`, `host_results_root`, `backend`, `fps`, `temperature`, `top_p`, `checkpoint_step`, `ddm_checkpoint`, `resolution_config`, `gpu_id`, `score_threshold`, `nms_sec`, `ddm_batch_size`, `frames_per_segment_hint`, `chunking_algorithm`, `stride_sec`, `smooth_min_seg_sec`, `smooth_min_vote`, `non_sop_action`, `poll_interval_sec`, `timeout_sec`
 
 2. Write the overrides to `/tmp/e2e_overrides.yaml`. The api client merges them on top of inputs.yaml at invocation time.
 
@@ -95,6 +95,42 @@ host_results_root: /abs/path/to/results
 
 Set `chunking_algorithm: uniform` + `chunk_length_sec: <float>` to skip DDM entirely and use fixed-length time slices.
 
+Add `stride_sec: <float>` on top of that for **overlapping** windows: one window of
+`chunk_length_sec` every `stride_sec` instead of a non-overlapping grid. Reach for it when
+actions are short relative to the chunk length — on a fixed grid an action straddling a
+boundary lands half in each chunk and is diluted in both, while overlapping windows guarantee
+at least one window contains it whole. The cost is `chunk_length_sec / stride_sec` times more
+VLM calls, so 3s/1s is 3x the inference of 3s alone.
+
+**Prefer `backend: vllm` for an overlapping run.** It is materially faster per window than
+transformers, and an overlapping run is dominated by window count. Note the service runs one
+e2e job at a time — a global guard, not per-GPU — so a single run cannot be sharded across
+GPUs and is bounded by one device.
+
+**Check `chunk_length_sec` against `resolution_config.max_frames`.** A chunk needs
+`chunk_length_sec x fps` frames; anything above `max_frames` is subsampled, so the model
+sees a thinned window rather than the window. At the common `fps: 8, max_frames: 40` that
+ceiling is 5 seconds — fine for a 3s window, silently lossy at 6s. The stage warns when it
+happens.
+
+`max_model_len` defaults to 32768 so vLLM starts out of the box. Left to its own derivation,
+vLLM sizes the KV cache from the checkpoint's declared context -- 262144 on Qwen3-VL, needing
+~36 GiB, more than an 80 GiB card has free -- and the engine fails before any inference. 32768
+needs ~4.5 GiB and clears the ~20.4k a default request uses.
+
+Adjust it when the default does not fit: raise it if requests are rejected for length (vision
+tokens are `total_pixels / (patch_size * spatial_merge_size)^2`, so raising `total_pixels`
+raises the requirement), lower it if the engine cannot start on a smaller card.
+
+Overlapping windows predict the same instant several times, so the service votes them back
+down to a non-overlapping sequence before scoring — per time bin, ties going to the non-SOP
+action. That action comes from `non_sop_action` if you set it, otherwise from
+`actions_can_be_skipped` in `actions.json`. **Many datasets do not declare that field** — without a non-SOP action the windows cannot be collapsed at all, so the run is refused rather than returning metrics computed on raw overlapping windows. If you hit that error, pass `non_sop_action`; it is the same 1-based index the augmentation config uses. `smooth_min_vote` sets how many
+overlapping windows must agree before an action is accepted, and `smooth_min_seg_sec` drops
+action segments shorter than the given duration. Both raw and smoothed predictions are written
+(`video_name_to_output_text.json` and `video_name_to_output_text_smoothed.json`), so the
+windows remain inspectable. `stride_sec` is rejected with `chunking_algorithm: ddm`, and must be `<= chunk_length_sec` — a wider stride would leave gaps that no window covers, which would be scored as non-SOP.
+
 ### Eval-ms request body
 
 | inputs.yaml field | Mapped to request body | Default |
@@ -105,6 +141,11 @@ Set `chunking_algorithm: uniform` + `chunk_length_sec: <float>` to skip DDM enti
 | `ddm_checkpoint` | `ddm_checkpoint` | latest under `ddm_training_job_id` |
 | `chunking_algorithm` | `chunking_algorithm` | `ddm` |
 | `chunk_length_sec` | `chunk_length_sec` | required when `chunking_algorithm=uniform` |
+| `stride_sec` | `stride_sec` | unset (non-overlapping); uniform chunking only |
+| `smooth_min_seg_sec` | `smooth_min_seg_sec` | `2.0`; used only with `stride_sec` |
+| `smooth_min_vote` | `smooth_min_vote` | `1`; used only with `stride_sec` |
+| `non_sop_action` | `non_sop_action` | inferred from `actions_can_be_skipped`; **required** with `stride_sec` when the dataset omits it |
+| `max_model_len` | `max_model_len` | `32768`; vLLM backend only — raise if requests are rejected for length, lower if the engine cannot start |
 | `score_threshold` | `score_threshold` | 0.5 |
 | `nms_sec` | `nms_sec` | 0.0 |
 | `ddm_batch_size` | `ddm_batch_size` | 8 |
@@ -172,6 +213,9 @@ For the action-level / sequence-level numbers the orchestrator and RCA care abou
 
 - **HTTP 400 "ddm_training_job_id is required"**: provide a DDM training job UUID, or switch to `chunking_algorithm: uniform`.
 - **HTTP 400 "chunk_length_sec is required"**: set `chunk_length_sec` (e.g. 12.0) when using `chunking_algorithm: uniform`.
+- **HTTP 422 "stride_sec applies to chunking_algorithm='uniform' only"**: drop `stride_sec`, or switch to uniform chunking.
+- **HTTP 422 "stride_sec must be <= chunk_length_sec"**: the stride is the step between window starts, so it has to be no larger than the window itself or the windows stop overlapping and start leaving gaps.
+- **Overlapping run scores worse than expected**: check the log line reporting how many windows collapsed to how many segments. Everything collapsing to non-SOP usually means `smooth_min_vote` is too high for the stride, or `smooth_min_seg_sec` exceeds the actions' real duration.
 - **HTTP 400 "Training/DDM job not found / not completed"**: confirm both training and DDM training jobs are in `completed` status before submitting.
 - **HTTP 400 "An e2e evaluation is already running"**: eval-ms allows one e2e job at a time. Cancel the running one (`POST /api/v1/e2e-evaluation/cancel/{eval_job_id}`) or wait.
 - **DDM under-segmentation** (low `temporal_segmentation.avg_f1`): try lowering `score_threshold` (e.g. 0.5 → 0.4). Re-evaluate before recommending DDM retraining.

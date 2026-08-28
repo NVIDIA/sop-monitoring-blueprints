@@ -112,6 +112,9 @@ Unknown fields are rejected.
   "temperature":       0.0,               // float,  default 0.0.  vLLM/transformers sampling temperature.
   "top_p":             1.0,               // float,  default 1.0.  Range [0, 1]. Irrelevant at temperature=0; matters when temperature>0.
   "backend":           "vllm",            // string, default "vllm".  Choices: "vllm" | "transformers".
+  "max_model_len":     32768,             // int | null. vLLM backend only. Context ceiling; the KV cache is sized from it.
+                                          //   Default 32768 clears the ~20.4k a default request uses. null restores vLLM's
+                                          //   derivation from the checkpoint, which fails to start on a 262144-context model.
   "checkpoint_step":   null,              // int    | null. Specific training step to load; null = latest.
   "resolution_config": null,              // ResolutionConfig | null. See above. null = use defaults.
   "gpu_id":            null               // int    | null. Pin the subprocess to a specific GPU index; null = use all visible GPUs.
@@ -147,6 +150,16 @@ Unknown fields are rejected.
   // Required when chunking_algorithm == "uniform":
   "chunk_length_sec":        null,                // float | null.  Length of each uniform chunk in seconds.  Must be > 0.
 
+  // Optional, uniform chunking only — OVERLAPPING windows:
+  "stride_sec":              null,                // float | null.  Emit a window of chunk_length_sec every stride_sec
+                                                  //   instead of a non-overlapping grid.  Unset = non-overlapping.
+  "smooth_min_seg_sec":      2.0,                 // float.  Action segments shorter than this become non-SOP.
+  "smooth_min_vote":         1,                   // int.    Overlapping windows that must agree before an action is kept.
+  "non_sop_action":          null,                // int | null. 1-based index of the "none of the above" action, used as the
+                                                  //   tie-break when windows disagree. Defaults to the lowest entry in actions.json
+                                                  //   "actions_can_be_skipped"; REQUIRED when the dataset omits that field, else
+                                                  //   the run is refused rather than scoring raw overlapping windows.
+
   // DDM-specific (ignored when chunking_algorithm == "uniform"):
   "ddm_checkpoint":          null,                // str  | null.  Filename override (e.g. "best.ckpt"); null = use last.ckpt.
   "score_threshold":         0.5,                 // float, default 0.5.  Min DDM score to accept as a boundary.
@@ -159,6 +172,15 @@ Unknown fields are rejected.
   "temperature":             0.0,                 // float, default 0.0.
   "top_p":                   1.0,                 // float, default 1.0.  Range [0, 1].
   "backend":                 "vllm",              // string, default "vllm".
+  "max_model_len":           32768,               // int | null. vLLM backend only. Context ceiling for the engine; the KV
+                                                  //   cache is sized from it. 32768 needs ~4.5 GiB and clears the ~20.4k a
+                                                  //   default request uses (16184 vision tokens at total_pixels=16572416,
+                                                  //   +79 prompt, +4096 generated). Raise it if requests are rejected for
+                                                  //   length, lower it if the engine cannot start on a smaller card. null
+                                                  //   restores vLLM's own derivation from the checkpoint, which FAILS TO
+                                                  //   START when the checkpoint declares a very large context (Qwen3-VL
+                                                  //   ships 262144 -> ~36 GiB of KV cache, more than the card has free at
+                                                  //   gpu_memory_utilization=0.7).
   "checkpoint_step":         null,                // int    | null.  null = latest.
   "resolution_config":       null,                // ResolutionConfig | null.  null = use defaults.
   "gpu_id":                  null                 // int    | null.
@@ -168,6 +190,11 @@ Unknown fields are rejected.
 **Cross-field rules (enforced by Pydantic):**
 - If `chunking_algorithm == "ddm"`, `ddm_training_job_id` is required (non-empty).
 - If `chunking_algorithm == "uniform"`, `chunk_length_sec` is required and must be `> 0`.
+- `stride_sec` is accepted only with `chunking_algorithm == "uniform"`; DDM produces its own
+  non-overlapping boundaries, so combining them is rejected rather than silently ignored.
+- `stride_sec` must be `> 0` and `<= chunk_length_sec`. A wider stride would leave stretches of
+  video inside no window; those instants collect no votes and would be reported as non-SOP,
+  i.e. "nothing happening" over footage that was never evaluated.
 
 **Response (200):**
 ```json
@@ -200,6 +227,7 @@ The backend choice is **runtime-only** — both CR1 and CR2 checkpoints work wit
 | Strategy | When to use | What you need to provide |
 | --- | --- | --- |
 | `ddm` (default) | You have a trained DDM-Net checkpoint. Best accuracy when DDM is well-trained. | A completed DDM training job (`ddm_training_job_id`). |
+| `uniform` + `stride_sec` | A fixed grid splits short actions: an action straddling a boundary lands half in each chunk and is diluted in both. Overlapping windows guarantee at least one window contains it whole. Costs `chunk_length_sec / stride_sec` times more VLM calls. | `chunk_length_sec` + `stride_sec`. No DDM job needed. |
 | `uniform` | You don't have a DDM checkpoint, or want a fast sanity-check baseline. Splits each video into fixed-length slices regardless of action boundaries — F1 will be low but VLM-side metrics (action_accuracy, sequence_accuracy) are still meaningful. | `chunk_length_sec` only. No DDM job needed. |
 
 The downstream VLM stage and accuracy computation are **identical** between strategies; only Stage 1 differs.
@@ -451,5 +479,6 @@ curl http://localhost:32090/api/v1/gpus
 | `400 No checkpoint dir for training job <id>` | The VLM training job didn't produce a checkpoint at the expected path | Verify `<RESULTS_ROOT>/<training_job_id>/.../safetensors/step_<N>` exists |
 | `400 DDM training job <id> is not completed` (e2e ddm mode) | DDM job hasn't finished or failed | Train DDM to completion, or switch to `chunking_algorithm: "uniform"` |
 | `422 chunking_algorithm='uniform' requires chunk_length_sec > 0` | Uniform mode without `chunk_length_sec` | Add `"chunk_length_sec": <seconds>` to the request |
+| `422 stride_sec applies to chunking_algorithm='uniform' only` | `stride_sec` sent with DDM chunking | Drop `stride_sec`, or switch to `chunking_algorithm: "uniform"` |
 | Eval crashes with `ValueError: too many values to unpack` | Downstream consumer expects different `inference_results.json` shape | This is fixed in the current version — rebuild the container to pick up the fix |
 | Job stuck in `running` after subprocess exited | Subprocess died without writing the expected output file (`inference_results.json` / `e2e_results.json`) | Check `log.txt` for the underlying error; cancel and re-run |
